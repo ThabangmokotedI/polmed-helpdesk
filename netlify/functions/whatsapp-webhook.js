@@ -1,6 +1,11 @@
 // netlify/functions/whatsapp-webhook.js
 // Receives inbound WhatsApp messages via Meta Cloud API and creates tickets in Firestore.
 // Media messages (images, documents, etc.) are downloaded from Meta and stored in Firebase Storage.
+//
+// UPDATED: if the sender already has an open (non-Resolved, non-Unresolved) ticket,
+// the new message is appended to that ticket's conversation thread instead of
+// creating a brand new ticket. This stops a normal back-and-forth WhatsApp
+// conversation from spawning a fresh ticket for every message.
 
 const admin = require('firebase-admin');
 
@@ -8,6 +13,10 @@ const verifyToken  = process.env.WHATSAPP_VERIFY_TOKEN;
 const projectId    = process.env.FIREBASE_PROJECT_ID;
 const accessToken  = process.env.WHATSAPP_ACCESS_TOKEN; // same permanent token used for sending
 const graphVersion = 'v21.0';
+
+// Statuses that count as "still open" — a new message from the same number
+// gets threaded onto the most recent ticket in one of these statuses.
+const OPEN_STATUSES = ['New', 'In Progress'];
 
 // Initialise Firebase Admin SDK once
 if (!admin.apps.length) {
@@ -28,13 +37,11 @@ if (!admin.apps.length) {
 }
 
 // ── Media handling ────────────────────────────────────────────────────────────
-// WhatsApp media message types that carry a downloadable asset
 const MEDIA_TYPES = ['image', 'video', 'audio', 'document', 'sticker'];
 
 async function fetchAndStoreMedia(mediaId, mimeType, ticketId) {
   if (!accessToken) throw new Error('WHATSAPP_ACCESS_TOKEN not set — cannot fetch media');
 
-  // Step 1: ask Meta for the temporary download URL
   const metaRes = await fetch(
     `https://graph.facebook.com/${graphVersion}/${mediaId}`,
     { headers: { 'Authorization': `Bearer ${accessToken}` } }
@@ -44,21 +51,18 @@ async function fetchAndStoreMedia(mediaId, mimeType, ticketId) {
     throw new Error('Could not get media URL: ' + JSON.stringify(metaJson));
   }
 
-  // Step 2: download the actual file (also needs the same auth header — expires within minutes)
   const fileRes = await fetch(metaJson.url, {
     headers: { 'Authorization': `Bearer ${accessToken}` }
   });
   if (!fileRes.ok) throw new Error('Could not download media file, status ' + fileRes.status);
   const buffer = Buffer.from(await fileRes.arrayBuffer());
 
-  // Step 3: upload to Firebase Storage
   const ext      = (mimeType || metaJson.mime_type || '').split('/')[1]?.split(';')[0] || 'bin';
   const filePath = `whatsapp-media/${ticketId}.${ext}`;
   const bucket   = admin.storage().bucket();
   const file     = bucket.file(filePath);
   await file.save(buffer, { metadata: { contentType: mimeType || metaJson.mime_type } });
 
-  // Step 4: get a long-lived signed URL agents can view in the dashboard
   const [url] = await file.getSignedUrl({ action: 'read', expires: '01-01-2100' });
   return url;
 }
@@ -77,7 +81,6 @@ exports.handler = async function (event) {
     return { statusCode: 405, body: 'Method not allowed' };
   }
 
-  // ── Parse inbound message ───────────────────────────────────────────────────
   let body;
   try {
     body = JSON.parse(event.body);
@@ -88,27 +91,26 @@ exports.handler = async function (event) {
   const change  = body?.entry?.[0]?.changes?.[0];
   const message = change?.value?.messages?.[0];
 
-  // Ignore non-message events (status updates, etc.)
   if (!message) return { statusCode: 200, body: 'Not a message event' };
 
   const sender = message?.from || 'unknown';
   const now    = new Date();
-
-  const ds       = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
-  const ts       = `${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}`;
-  const ticketId = `TKT-${ds}-WA-${ts}`;
 
   // ── Figure out message content (text vs media) ──────────────────────────────
   let text     = message?.text?.body || '';
   let mediaUrl = null;
   let mediaType = null;
 
+  const ds = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
+  const ts = `${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}`;
+  const tempIdForMedia = `TMP-${ds}-${ts}`; // only used as a storage path if this turns out to be a new ticket
+
   if (MEDIA_TYPES.includes(message.type)) {
-    const mediaObj = message[message.type]; // e.g. message.image, message.document
+    const mediaObj = message[message.type];
     mediaType = message.type;
     text      = mediaObj?.caption || `[${message.type} attached]`;
     try {
-      mediaUrl = await fetchAndStoreMedia(mediaObj.id, mediaObj.mime_type, ticketId);
+      mediaUrl = await fetchAndStoreMedia(mediaObj.id, mediaObj.mime_type, tempIdForMedia);
     } catch (err) {
       console.error('Media fetch/store failed:', err.message);
       text = `[${message.type} attached — could not be retrieved, ask member to resend]`;
@@ -117,32 +119,88 @@ exports.handler = async function (event) {
     text = '[Unsupported message type]';
   }
 
-  const ticket = {
-    ticketId,
-    contactMethod: 'WhatsApp',
-    source:        'whatsapp-webhook',
-    status:        'New',
-    message:       text,
-    mediaUrl,                      // null if no media, or a signed Firebase Storage URL
-    mediaType,                     // null, or 'image' | 'video' | 'audio' | 'document' | 'sticker'
-    phoneNumber:   sender,
-    description:   '',
-    issueType:     '',
-    dateReceived:  now.toISOString().split('T')[0],
-    timeReceived:  now.toTimeString().split(' ')[0],
-    createdBy:     'WhatsApp webhook',
-    createdAt:     admin.firestore.FieldValue.serverTimestamp(),
-    updatedBy:     'WhatsApp webhook',
-    updatedAt:     admin.firestore.FieldValue.serverTimestamp()
-  };
-
   try {
     const db = admin.firestore();
+
+    // ── Look for an existing OPEN ticket from this same sender ────────────────
+    const existingSnap = await db.collection('tickets')
+      .where('phoneNumber', '==', sender)
+      .where('status', 'in', OPEN_STATUSES)
+      .orderBy('createdAt', 'desc')
+      .limit(1)
+      .get();
+
+    if (!existingSnap.empty) {
+      // ── Thread the new message onto the existing ticket ─────────────────────
+      const ticketDoc = existingSnap.docs[0];
+      const ticketData = ticketDoc.data();
+
+      const newEntry = {
+        from: 'member',
+        text,
+        mediaUrl,
+        mediaType,
+        at: now.toISOString()
+      };
+
+      await ticketDoc.ref.update({
+        conversation: admin.firestore.FieldValue.arrayUnion(newEntry),
+        lastMemberMessage: text,
+        lastMemberMessageAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedBy: 'WhatsApp webhook',
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      console.log('Appended to existing ticket:', ticketData.ticketId, 'from sender:', sender.slice(-4));
+      return { statusCode: 200, body: JSON.stringify({ ok: true, ticketId: ticketData.ticketId, appended: true }) };
+    }
+
+    // ── No open ticket found — create a new one ────────────────────────────────
+    const ticketId = `TKT-${ds}-WA-${ts}`;
+
+    // If this message had media, move it from the temp path to the real ticket ID path
+    let finalMediaUrl = mediaUrl;
+    if (mediaUrl) {
+      try {
+        const bucket = admin.storage().bucket();
+        const ext = mediaUrl.split('.').pop().split('?')[0];
+        const oldFile = bucket.file(`whatsapp-media/${tempIdForMedia}.${ext}`);
+        const newFile = bucket.file(`whatsapp-media/${ticketId}.${ext}`);
+        await oldFile.move(newFile);
+        const [url] = await newFile.getSignedUrl({ action: 'read', expires: '01-01-2100' });
+        finalMediaUrl = url;
+      } catch (err) {
+        console.error('Could not rename media file to final ticket ID:', err.message);
+        // fall back to the temp URL — not fatal
+      }
+    }
+
+    const ticket = {
+      ticketId,
+      contactMethod: 'WhatsApp',
+      source:        'whatsapp-webhook',
+      status:        'New',
+      message:       text,
+      mediaUrl:      finalMediaUrl,
+      mediaType,
+      phoneNumber:   sender,
+      description:   '',
+      issueType:     '',
+      conversation:  [{ from: 'member', text, mediaUrl: finalMediaUrl, mediaType, at: now.toISOString() }],
+      dateReceived:  now.toISOString().split('T')[0],
+      timeReceived:  now.toTimeString().split(' ')[0],
+      createdBy:     'WhatsApp webhook',
+      createdAt:     admin.firestore.FieldValue.serverTimestamp(),
+      updatedBy:     'WhatsApp webhook',
+      updatedAt:     admin.firestore.FieldValue.serverTimestamp()
+    };
+
     await db.collection('tickets').add(ticket);
-    console.log('Ticket created:', ticketId, 'from sender:', sender.slice(-4), mediaType ? `(media: ${mediaType})` : '');
+    console.log('New ticket created:', ticketId, 'from sender:', sender.slice(-4), mediaType ? `(media: ${mediaType})` : '');
     return { statusCode: 200, body: JSON.stringify({ ok: true, ticketId }) };
+
   } catch (err) {
     console.error('Firestore error:', err.message);
-    return { statusCode: 500, body: 'Error creating ticket: ' + err.message };
+    return { statusCode: 500, body: 'Error creating/updating ticket: ' + err.message };
   }
 };

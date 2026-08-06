@@ -1,13 +1,10 @@
 // netlify/functions/send-whatsapp-reply.js
 // Sends a free-form WhatsApp reply to a member via Meta Cloud API, and logs
-// the reply onto the ticket in Firestore.
+// the reply onto the ticket's conversation thread in Firestore.
 //
 // Requires these env vars in Netlify (same project as whatsapp-webhook.js):
-//   WHATSAPP_ACCESS_TOKEN     — permanent System User token (see note below)
+//   WHATSAPP_ACCESS_TOKEN     — permanent System User token
 //   WHATSAPP_PHONE_NUMBER_ID  — the Phone Number ID for YOUR business number
-//                                 (Meta → WhatsApp → API Setup — this is
-//                                 different from the phone number itself,
-//                                 it's a long numeric ID next to it)
 //   FIREBASE_SERVICE_ACCOUNT  — already set
 //   FIREBASE_PROJECT_ID       — already set
 
@@ -96,13 +93,21 @@ exports.handler = async function (event) {
     };
   }
 
-  // ── Log the reply on the ticket in Firestore (best-effort, non-fatal) ───────
+  // ── Log the reply onto the ticket's conversation thread (best-effort) ───────
   try {
     if (admin.apps.length && ticketId) {
       const db = admin.firestore();
       const snap = await db.collection('tickets').where('ticketId', '==', ticketId).limit(1).get();
       if (!snap.empty) {
+        const entry = {
+          from: 'agent',
+          text: message,
+          mediaUrl: null,
+          mediaType: null,
+          at: new Date().toISOString()
+        };
         await snap.docs[0].ref.update({
+          conversation: admin.firestore.FieldValue.arrayUnion(entry),
           lastReply: message,
           lastReplyAt: admin.firestore.FieldValue.serverTimestamp(),
           updatedBy: 'agent-reply',
