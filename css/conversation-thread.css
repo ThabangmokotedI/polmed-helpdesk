@@ -1,0 +1,44 @@
+/* ── Conversation thread (WhatsApp back-and-forth) ─────────────────────────── */
+.conversation-thread {
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: #f7f7f8;
+  border-radius: 10px;
+  border: 1px solid #e5e5e5;
+}
+
+.convo-bubble {
+  max-width: 80%;
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+
+.convo-member {
+  align-self: flex-start;
+  background: #ffffff;
+  border: 1px solid #e2e2e2;
+  border-bottom-left-radius: 3px;
+}
+
+.convo-agent {
+  align-self: flex-end;
+  background: #dcf8c6;
+  border-bottom-right-radius: 3px;
+}
+
+.convo-meta {
+  font-size: 10.5px;
+  color: #8a8a8a;
+  margin-bottom: 3px;
+}
+
+.convo-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}

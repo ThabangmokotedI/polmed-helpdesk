@@ -143,6 +143,13 @@ function listenToTickets() {
     if (document.getElementById('page-reports')?.style.display !== 'none') {
       renderReports();
     }
+    // If the detail modal is currently open on a ticket, refresh its
+    // conversation thread live so a new member reply appears without
+    // the agent needing to close and reopen the modal.
+    const detailOverlay = document.getElementById('detail-overlay');
+    if (detailOverlay && detailOverlay.classList.contains('open') && editingId) {
+      renderConversation(editingId);
+    }
   });
 }
 
@@ -374,6 +381,11 @@ function viewTicket(id) {
         ? `<img src="${t.mediaUrl}" alt="Attachment from member" style="max-width:100%;border-radius:8px;border:1px solid #ddd">`
         : `<a href="${t.mediaUrl}" target="_blank" rel="noopener" class="btn btn-sm">Open ${t.mediaType || 'file'}</a>`}
     </div>` : ''}
+    ${canReplyByWhatsApp ? `
+    <div class="detail-section">
+      <div class="detail-section-label">Conversation</div>
+      <div id="conversation-thread" class="conversation-thread"></div>
+    </div>` : ''}
     <div class="detail-section">
       <div class="detail-section-label">Description</div>
       <div class="detail-block">${t.description || '—'}</div>
@@ -390,6 +402,42 @@ function viewTicket(id) {
   document.getElementById('copy-reply-btn').style.display = t.ticketId ? 'inline-flex' : 'none';
   document.getElementById('send-reply-btn').style.display = canReplyByWhatsApp ? 'inline-flex' : 'none';
   document.getElementById('detail-overlay').classList.add('open');
+  if (canReplyByWhatsApp) renderConversation(id);
+}
+
+// ── Conversation thread (WhatsApp back-and-forth) ───────────────────────────
+function renderConversation(id) {
+  const el = document.getElementById('conversation-thread');
+  if (!el) return; // modal isn't showing the thread (not a WhatsApp ticket) — nothing to do
+  const t = tickets.find(x => x.id === id);
+  if (!t) return;
+
+  const convo = Array.isArray(t.conversation) ? t.conversation : [];
+  if (convo.length === 0) {
+    el.innerHTML = `<div class="detail-block" style="color:#888">No messages yet beyond the original one above.</div>`;
+    return;
+  }
+
+  const sorted = [...convo].sort((a, b) => new Date(a.at) - new Date(b.at));
+  el.innerHTML = sorted.map(entry => {
+    const isAgent = entry.from === 'agent';
+    const when = entry.at ? new Date(entry.at).toLocaleString() : '';
+    const mediaHtml = entry.mediaUrl
+      ? (entry.mediaType === 'image'
+          ? `<img src="${entry.mediaUrl}" alt="attachment" style="max-width:200px;border-radius:6px;display:block;margin-top:6px">`
+          : `<a href="${entry.mediaUrl}" target="_blank" rel="noopener">Open attachment</a>`)
+      : '';
+    return `
+      <div class="convo-bubble ${isAgent ? 'convo-agent' : 'convo-member'}">
+        <div class="convo-meta">${isAgent ? 'You (agent)' : 'Member'} · ${when}</div>
+        <div class="convo-text">${(entry.text || '').replace(/</g, '&lt;')}</div>
+        ${mediaHtml}
+      </div>
+    `;
+  }).join('');
+
+  // Keep the thread scrolled to the latest message
+  el.scrollTop = el.scrollHeight;
 }
 
 function closeDetail()    { document.getElementById('detail-overlay').classList.remove('open'); }
