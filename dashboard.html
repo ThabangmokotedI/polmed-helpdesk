@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Polmed Connect — Helpdesk Tracker</title>
+  <link rel="icon" type="image/png" href="img/polmed-logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body style="visibility:hidden">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">
+        <img src="img/polmed-logo.png" alt="Polmed logo" width="32" height="32" style="display:block;border-radius:50%;">
+        <div>
+          <div class="sidebar-brand">POLMED</div>
+          <div class="sidebar-sub">Helpdesk</div>
+        </div>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Navigation</div>
+      <button class="nav-item active" onclick="setPage('tickets')" id="nav-tickets">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+        All Tickets
+      </button>
+      <button class="nav-item" onclick="setPage('reports')" id="nav-reports">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+        Reports
+      </button>
+      <button class="nav-item" onclick="setPage('setup')" id="nav-setup">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/></svg>
+        Setup & Integrations
+      </button>
+      <button class="nav-item" onclick="setPage('guide')" id="nav-guide">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M21 11.5a8.4 8.4 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.4 8.4 0 01-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.4 8.4 0 013.8-.9h.5a8.5 8.5 0 018 8v.5z"/></svg>
+        WhatsApp Workflow
+      </button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="agent-chip" id="agent-chip">
+        <div class="agent-avatar" id="agent-avatar">?</div>
+        <div class="agent-info">
+          <div class="agent-name" id="agent-name">Loading...</div>
+          <div class="agent-role" id="agent-role">Agent</div>
+        </div>
+      </div>
+      <button class="btn-signout" onclick="signOut()" title="Sign out">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+        Sign out
+      </button>
+      <div class="popia-sidebar">⚠ POPIA · Restricted access</div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="main-wrap">
+    <!-- TOPBAR -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="menu-toggle" onclick="toggleSidebar()" aria-label="Toggle menu">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+        </button>
+        <div>
+          <div class="page-title" id="page-title">All Tickets</div>
+          <div class="page-sub" id="page-sub">Polmed Connect App — Member Support 2026</div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <div class="live-badge" id="env-badge"><span class="live-dot"></span> Live</div>
+        <div class="notify-box" id="new-count-box" style="display:none">
+          <span class="notify-dot"></span>
+          <span id="new-count">0</span> new
+        </div>
+        <button class="btn btn-primary" onclick="openNewTicket()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M12 5v14M5 12h14"/></svg>
+          New Ticket
+        </button>
+      </div>
+    </header>
+
+    <!-- CONTENT -->
+    <main class="content">
+
+      <!-- ===== TICKETS PAGE ===== -->
+      <section id="page-tickets">
+        <div class="stats-row" id="stats-row">
+          <div class="stat-card"><div class="stat-label">Total</div><div class="stat-num" id="stat-total">—</div></div>
+          <div class="stat-card"><div class="stat-label">In Progress</div><div class="stat-num prog" id="stat-prog">—</div></div>
+          <div class="stat-card"><div class="stat-label">Resolved</div><div class="stat-num res" id="stat-res">—</div></div>
+          <div class="stat-card"><div class="stat-label">Unresolved</div><div class="stat-num unres" id="stat-unres">—</div></div>
+          <div class="stat-card"><div class="stat-label">WhatsApp</div><div class="stat-num wa" id="stat-wa">—</div></div>
+          <div class="stat-card"><div class="stat-label">Email</div><div class="stat-num" id="stat-email">—</div></div>
+        </div>
+
+        <div class="controls">
+          <div class="search-box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+            <input type="text" id="search" placeholder="Search ticket ID, member number, issue…" oninput="filterTickets()">
+          </div>
+          <select id="filter-status" onchange="filterTickets()">
+            <option value="">All statuses</option>
+            <option>New</option>
+            <option>In Progress</option>
+            <option>Resolved</option>
+            <option>Unresolved</option>
+          </select>
+          <select id="filter-contact" onchange="filterTickets()">
+            <option value="">All channels</option>
+            <option>WhatsApp</option>
+            <option>Email</option>
+            <option>Phone call</option>
+          </select>
+          <select id="filter-issue" onchange="filterTickets()">
+            <option value="">All issue types</option>
+            <option>Onboarding assistance</option>
+            <option>Login Issue</option>
+            <option>Forgot username/password</option>
+            <option>Membership &amp; documents</option>
+            <option>Wellness tracker</option>
+            <option>Feature malfunction</option>
+            <option>Huawei user</option>
+            <option>Unspecified / No Response</option>
+          </select>
+        </div>
+
+        <div class="table-wrap">
+          <div class="table-head">
+            <div class="th">Ticket ID</div>
+            <div class="th">Member No.</div>
+            <div class="th">Issue Type</div>
+            <div class="th">Description</div>
+            <div class="th">Channel</div>
+            <div class="th">Date Received</div>
+            <div class="th">Status</div>
+            <div class="th"></div>
+          </div>
+          <div id="ticket-list">
+            <div class="loading-row"><div class="spinner"></div>Loading tickets…</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== REPORTS PAGE ===== -->
+      <section id="page-reports" style="display:none">
+        <div class="report-top-bar">
+          <label for="report-period" class="report-period-label">Period:</label>
+          <select id="report-period" onchange="updateReportPeriod()">
+            <option value="all">All time</option>
+            <option value="this-month">This month</option>
+            <option value="last-month">Last month</option>
+            <option value="last-3">Last 3 months</option>
+            <option value="last-6">Last 6 months</option>
+          </select>
+        </div>
+
+        <!-- KPI cards -->
+        <div class="kpi-row">
+          <div class="kpi-card">
+            <div class="kpi-label">Total Tickets</div>
+            <div class="kpi-num" id="r-total">—</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Avg Resolution Time</div>
+            <div class="kpi-num" id="r-avg-rt">—</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Resolution Rate</div>
+            <div class="kpi-num res" id="r-rate">—</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">WhatsApp</div>
+            <div class="kpi-num wa" id="r-wa">—</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Email</div>
+            <div class="kpi-num" id="r-email">—</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Phone</div>
+            <div class="kpi-num" id="r-phone">—</div>
+          </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="charts-grid">
+          <div class="chart-card chart-wide">
+            <div class="chart-title">Tickets per Month (Last 6 months)</div>
+            <div id="monthly-chart" class="vbar-container"></div>
+          </div>
+          <div class="chart-card">
+            <div class="chart-title">Issue Type Breakdown</div>
+            <div id="issue-chart" class="hbar-container"></div>
+          </div>
+          <div class="chart-card">
+            <div class="chart-title">Status Breakdown</div>
+            <div id="status-chart" class="hbar-container"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== SETUP & INTEGRATIONS PAGE ===== -->
+      <section id="page-setup" style="display:none">
+        <div class="guide-wrap">
+
+          <!-- WhatsApp Setup -->
+          <div class="guide-card">
+            <h2>
+              <svg viewBox="0 0 24 24" fill="none" stroke="#25D366" stroke-width="2" width="22" height="22"><path d="M21 11.5a8.4 8.4 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.4 8.4 0 01-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.4 8.4 0 013.8-.9h.5a8.5 8.5 0 018 8v.5z"/></svg>
+              WhatsApp API — Auto-create tickets from messages
+            </h2>
+            <p class="guide-intro">When a member WhatsApps your helpdesk number, a ticket is automatically created with status <strong>New</strong>. This uses Meta's <strong>free</strong> WhatsApp Cloud API (1 000 free conversations per month).</p>
+            <div class="setup-section-label">Part A — Create your Meta Developer App (do this once)</div>
+            <div class="steps">
+              <div class="step"><div class="step-n">1</div><div class="step-text">Open your browser and go to: <code>developers.facebook.com</code>. Click <strong>Log in</strong> and use your Facebook account (or create one — it's free).</div></div>
+              <div class="step"><div class="step-n">2</div><div class="step-text">Once logged in, click the big blue <strong>My Apps</strong> button at the top right, then click <strong>Create App</strong>.</div></div>
+              <div class="step"><div class="step-n">3</div><div class="step-text">You'll see a list of app types. Click <strong>Other</strong>, then click <strong>Next</strong>. On the next screen choose <strong>Business</strong>, then click <strong>Next</strong> again.</div></div>
+              <div class="step"><div class="step-n">4</div><div class="step-text">Give your app a name — type <strong>Polmed Helpdesk</strong>. Leave the email as-is. Click <strong>Create App</strong>.</div></div>
+              <div class="step"><div class="step-n">5</div><div class="step-text">You'll land on a dashboard. Scroll down until you see a box that says <strong>WhatsApp</strong>. Click the <strong>Set Up</strong> button inside that box.</div></div>
+              <div class="step"><div class="step-n">6</div><div class="step-text">Meta gives you a <strong>free test phone number</strong> automatically. You'll see it on screen. Write it down — this is the number members will WhatsApp.</div></div>
+              <div class="step"><div class="step-n">7</div><div class="step-text">On the left menu, click <strong>WhatsApp → Configuration</strong>. You'll see a box labelled <strong>Webhook</strong>. Click <strong>Edit</strong>.</div></div>
+              <div class="step"><div class="step-n">8</div><div class="step-text">In the <strong>Callback URL</strong> box, paste your Netlify webhook URL. It looks like: <code>https://YOUR-SITE.netlify.app/.netlify/functions/whatsapp-webhook</code>. (You'll get this URL after deploying to Netlify — see the Netlify setup guide in the README.)</div></div>
+              <div class="step"><div class="step-n">9</div><div class="step-text">In the <strong>Verify Token</strong> box, type: <code>polmed-wa-2026</code>. This is a secret password that proves the webhook is yours. Click <strong>Verify and Save</strong>.</div></div>
+              <div class="step"><div class="step-n">10</div><div class="step-text">Still on the Configuration page, scroll down to <strong>Webhook fields</strong>. Find <strong>messages</strong> in the list and click the <strong>Subscribe</strong> button next to it. Click <strong>Done</strong>.</div></div>
+            </div>
+            <div class="setup-section-label">Part B — Add your credentials to Netlify</div>
+            <div class="steps">
+              <div class="step"><div class="step-n">11</div><div class="step-text">Go to <code>netlify.com</code>, open your site, click <strong>Site configuration</strong> → <strong>Environment variables</strong> → <strong>Add a variable</strong>.</div></div>
+              <div class="step"><div class="step-n">12</div><div class="step-text">Add <code>WHATSAPP_VERIFY_TOKEN</code> = <code>polmed-wa-2026</code></div></div>
+              <div class="step"><div class="step-n">13</div><div class="step-text">Add <code>FIREBASE_PROJECT_ID</code> = your Firebase project ID (e.g. <code>polmed-helpdesk</code>)</div></div>
+              <div class="step"><div class="step-n">14</div><div class="step-text">Add <code>FIREBASE_SERVICE_ACCOUNT</code> = the JSON key from Firebase. To get this: go to <code>console.firebase.google.com</code> → your project → <strong>Project settings</strong> (gear icon) → <strong>Service accounts</strong> → <strong>Generate new private key</strong>. A file downloads. Open it, select all the text, and paste it as the value here.</div></div>
+              <div class="step"><div class="step-n">15</div><div class="step-text">Click <strong>Deploy site</strong> in Netlify to apply the new variables. Done! Test it by sending a WhatsApp message to your test number — a ticket should appear in the system within seconds.</div></div>
+            </div>
+          </div>
+
+          <!-- Email Setup -->
+          <div class="guide-card">
+            <h2>
+              <svg viewBox="0 0 24 24" fill="none" stroke="#3B82F6" stroke-width="2" width="22" height="22"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+              Email-to-Ticket — Auto-create tickets from inbound emails
+            </h2>
+            <p class="guide-intro">When someone emails your helpdesk address, a ticket is automatically created. This uses <strong>Mailgun's free plan</strong> (100 emails/day free — no credit card needed for the sandbox).</p>
+            <div class="setup-section-label">Part A — Create a free Mailgun account</div>
+            <div class="steps">
+              <div class="step"><div class="step-n">1</div><div class="step-text">Go to <code>mailgun.com</code>. Click <strong>Sign Up Free</strong>. Fill in your name, email and a password. Click <strong>Create Account</strong>.</div></div>
+              <div class="step"><div class="step-n">2</div><div class="step-text">Mailgun gives you a free sandbox domain. It looks like: <code>sandbox1234abcd.mailgun.org</code>. Click on it in the left menu to open it.</div></div>
+              <div class="step"><div class="step-n">3</div><div class="step-text">On the left menu click <strong>Receiving</strong> then click <strong>Create Route</strong>.</div></div>
+              <div class="step"><div class="step-n">4</div><div class="step-text">Under <strong>Expression type</strong> choose <strong>Match Recipient</strong>. In the box type: <code>tickets@YOUR-SANDBOX.mailgun.org</code> (use your actual sandbox address).</div></div>
+              <div class="step"><div class="step-n">5</div><div class="step-text">Under <strong>Actions</strong>, tick the box next to <strong>Forward</strong>. In the box that appears, paste your Netlify email webhook URL: <code>https://YOUR-SITE.netlify.app/.netlify/functions/email-webhook</code></div></div>
+              <div class="step"><div class="step-n">6</div><div class="step-text">Click <strong>Create Route</strong>. Done! Now any email sent to <code>tickets@YOUR-SANDBOX.mailgun.org</code> will automatically create a ticket in this system.</div></div>
+            </div>
+            <div class="setup-section-label">Part B — Add Mailgun key to Netlify</div>
+            <div class="steps">
+              <div class="step"><div class="step-n">7</div><div class="step-text">In Mailgun, go to <strong>Settings → API Keys</strong>. Copy the <strong>Private API key</strong>.</div></div>
+              <div class="step"><div class="step-n">8</div><div class="step-text">In Netlify → Site configuration → Environment variables, add: <code>MAILGUN_SIGNING_KEY</code> = the key you just copied.</div></div>
+              <div class="step"><div class="step-n">9</div><div class="step-text">Redeploy your Netlify site. Test by sending an email to your Mailgun address — a ticket with channel <strong>Email</strong> should appear within seconds.</div></div>
+            </div>
+          </div>
+
+          <!-- Role Management -->
+          <div class="guide-card">
+            <h2>
+              <svg viewBox="0 0 24 24" fill="none" stroke="#8B5CF6" stroke-width="2" width="22" height="22"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+              Role Management — Supervisor vs Agent
+            </h2>
+            <p class="guide-intro"><strong>Agents</strong> can create, view, and update tickets but <strong cannot delete them</strong>. <strong>Supervisors</strong> can do everything including delete tickets. Roles are set once in the Firebase console.</p>
+            <div class="setup-section-label">How to make someone a Supervisor</div>
+            <div class="steps">
+              <div class="step"><div class="step-n">1</div><div class="step-text">Go to <code>console.firebase.google.com</code> and open your project.</div></div>
+              <div class="step"><div class="step-n">2</div><div class="step-text">In the left menu, click <strong>Firestore Database</strong>.</div></div>
+              <div class="step"><div class="step-n">3</div><div class="step-text">You will see a list of collections. Click on <strong>agents</strong>. (If it's not there yet, ask the person to log in first — a document is created automatically when someone logs in.)</div></div>
+              <div class="step"><div class="step-n">4</div><div class="step-text">Click the document for the person you want to promote. You'll see their email and a <strong>role</strong> field that says <code>agent</code>.</div></div>
+              <div class="step"><div class="step-n">5</div><div class="step-text">Click the pencil ✏ icon next to the <strong>role</strong> field. Change the value from <code>agent</code> to <code>supervisor</code>. Click <strong>Update</strong>.</div></div>
+              <div class="step"><div class="step-n">6</div><div class="step-text">Ask that person to <strong>sign out and sign back in</strong>. They will now see the delete button on tickets and the 🛡 Supervisor badge in the sidebar.</div></div>
+            </div>
+            <div class="setup-section-label">How to add a new agent</div>
+            <div class="steps">
+              <div class="step"><div class="step-n">7</div><div class="step-text">In the Firebase console, go to <strong>Authentication → Users</strong>. Click <strong>Add user</strong>.</div></div>
+              <div class="step"><div class="step-n">8</div><div class="step-text">Enter the agent's email address and a temporary password. Click <strong>Add user</strong>.</div></div>
+              <div class="step"><div class="step-n">9</div><div class="step-text">Share the email and temporary password with the agent. When they log in for the first time, an <strong>agents</strong> document is automatically created for them with role <code>agent</code>.</div></div>
+              <div class="step"><div class="step-n">10</div><div class="step-text">To let them reset their own password, go to Authentication → Users → click the three dots next to their name → <strong>Send password reset email</strong>.</div></div>
+            </div>
+            <div class="role-legend">
+              <div class="role-row"><span class="badge-role supervisor">🛡 Supervisor</span><span>Create ✓ · Edit ✓ · Delete ✓ · View reports ✓</span></div>
+              <div class="role-row"><span class="badge-role agent">Agent</span><span>Create ✓ · Edit ✓ · Delete ✗ · View reports ✓</span></div>
+            </div>
+          </div>
+
+          <!-- POPIA -->
+          <div class="guide-card popia-card">
+            <h2>⚠ POPIA Compliance Rules</h2>
+            <ul class="popia-rules">
+              <li><strong>Member numbers only</strong> — never store full phone numbers. Use the member's Polmed membership number as the identifier.</li>
+              <li><strong>Restricted access</strong> — only authorised helpdesk agents should have login credentials.</li>
+              <li><strong>Retention</strong> — records older than 12 months must be anonymised or deleted.</li>
+              <li><strong>No external sharing</strong> — never export or share ticket data with any party outside the Polmed helpdesk team.</li>
+              <li><strong>Audit trail</strong> — every change is logged with the agent's email and timestamp.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== WHATSAPP WORKFLOW GUIDE PAGE ===== -->
+      <section id="page-guide" style="display:none">
+        <div class="guide-wrap">
+          <div class="guide-card">
+            <h2>
+              <svg viewBox="0 0 24 24" fill="none" stroke="#25D366" stroke-width="2" width="22" height="22"><path d="M21 11.5a8.4 8.4 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.4 8.4 0 01-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.4 8.4 0 013.8-.9h.5a8.5 8.5 0 018 8v.5z"/></svg>
+              WhatsApp auto-ticket workflow
+            </h2>
+            <div class="steps">
+              <div class="step"><div class="step-n">1</div><div class="step-text">A member messages the WhatsApp helpdesk number with an app issue.</div></div>
+              <div class="step"><div class="step-n">2</div><div class="step-text">The webhook automatically creates a ticket from the incoming WhatsApp message with status <strong>New</strong>.</div></div>
+              <div class="step"><div class="step-n">3</div><div class="step-text">The ticket appears instantly in the system. Click it, review the original WhatsApp message, and fill in the missing fields: <strong>Issue Type</strong>, <strong>Description</strong>, and <strong>Status</strong>.</div></div>
+              <div class="step"><div class="step-n">4</div><div class="step-text">Use <strong>Copy reply</strong> to paste a reference reply back into WhatsApp for the member.</div></div>
+              <div class="step"><div class="step-n">5</div><div class="step-text">When resolved, update the ticket status to <strong>Resolved</strong>, fill in the resolution notes, and save.</div></div>
+            </div>
+          </div>
+          <div class="guide-card">
+            <h2>Email-to-ticket workflow</h2>
+            <div class="steps">
+              <div class="step"><div class="step-n">1</div><div class="step-text">A member (or team member) sends an email to the helpdesk email address (set up via Mailgun — see Setup page).</div></div>
+              <div class="step"><div class="step-n">2</div><div class="step-text">The email is automatically converted into a ticket with status <strong>New</strong> and channel <strong>Email</strong>. The subject becomes the description.</div></div>
+              <div class="step"><div class="step-n">3</div><div class="step-text">Triage the ticket just like a WhatsApp one: fill in Issue Type, add your notes, update status.</div></div>
+            </div>
+          </div>
+          <div class="guide-card">
+            <h2>WhatsApp label → Status mapping</h2>
+            <div class="label-map">
+              <div class="label-row"><span class="badge new">🟣 New</span><span>→</span><span class="badge new">New</span></div>
+              <div class="label-row"><span class="badge prog">🔵 In Progress</span><span>→</span><span class="badge prog">In Progress</span></div>
+              <div class="label-row"><span class="badge res">🟢 Resolved</span><span>→</span><span class="badge res">Resolved</span></div>
+              <div class="label-row"><span class="badge unres">🔴 Unresolved</span><span>→</span><span class="badge unres">Unresolved</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ===== TICKET MODAL ===== -->
+  <div class="overlay" id="ticket-overlay" onclick="if(event.target===this)closeModal()">
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title" id="modal-title">New Support Ticket</div>
+          <div class="modal-sub" id="modal-tid"></div>
+        </div>
+        <button class="modal-close" onclick="closeModal()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <div id="wa-tip" class="wa-tip">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#25D366" stroke-width="2" width="16" height="16"><path d="M21 11.5a8.4 8.4 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.4 8.4 0 01-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.4 8.4 0 013.8-.9h.5a8.5 8.5 0 018 8v.5z"/></svg>
+          After saving, <strong>send the ticket ID to the member</strong> as their reference number.
+        </div>
+
+        <div class="form-row-2">
+          <div class="form-group">
+            <label>Contact Method <span class="req">*</span></label>
+            <select id="f-contact">
+              <option value="">Select…</option>
+              <option>WhatsApp</option>
+              <option>Email</option>
+              <option>Phone call</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Member Identifier (No.)</label>
+            <input type="text" id="f-identifier" placeholder="e.g. 12345678">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Issue Type <span class="req">*</span></label>
+          <select id="f-issue">
+            <option value="">Select issue type…</option>
+            <option>Onboarding assistance</option>
+            <option>Login Issue</option>
+            <option>Forgot username/password</option>
+            <option>Membership &amp; documents</option>
+            <option>Wellness tracker</option>
+            <option>Feature malfunction</option>
+            <option>Huawei user</option>
+            <option>Unspecified / No Response</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Description <span class="req">*</span></label>
+          <textarea id="f-description" placeholder="Describe what the member reported…"></textarea>
+        </div>
+
+        <div class="form-row-3">
+          <div class="form-group">
+            <label>Date Received <span class="req">*</span></label>
+            <input type="date" id="f-date">
+          </div>
+          <div class="form-group">
+            <label>Time Received</label>
+            <input type="time" id="f-time">
+          </div>
+          <div class="form-group">
+            <label>Status</label>
+            <select id="f-status">
+              <option>New</option>
+              <option>In Progress</option>
+              <option>Resolved</option>
+              <option>Unresolved</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row-2">
+          <div class="form-group">
+            <label>Time to First Response</label>
+            <input type="text" id="f-first-response" placeholder="e.g. 17 minutes, 2 hours">
+          </div>
+          <div class="form-group">
+            <label>Resolution Time</label>
+            <input type="text" id="f-res-time" placeholder="e.g. 18 minutes, 1 hour">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>RT in Hours <span class="hint">(number only, used for report averages)</span></label>
+          <input type="number" id="f-rt-hours" placeholder="e.g. 0.3" step="0.01" min="0">
+        </div>
+
+        <div class="form-group">
+          <label>Resolution Description</label>
+          <textarea id="f-resolution" placeholder="How was this resolved? Fill in when status = Resolved."></textarea>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-danger" id="delete-btn" onclick="deleteTicket()" style="display:none;margin-right:auto">
+          Delete ticket
+        </button>
+        <button class="btn" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveTicket()" id="save-btn">Log Ticket</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- DETAIL MODAL -->
+  <div class="overlay" id="detail-overlay" onclick="if(event.target===this)closeDetail()">
+    <div class="modal modal-wide" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <code class="tid-code" id="detail-tid"></code>
+          <span id="detail-badge"></span>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-sm" onclick="editFromDetail()">Edit / Update</button>
+          <button class="modal-close" onclick="closeDetail()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="modal-body" id="detail-body"></div>
+      <div class="modal-footer">
+        <button class="btn" onclick="copyReply()" id="copy-reply-btn" style="display:none">Copy reply</button>
+        <button class="btn btn-primary" onclick="sendWhatsAppReply()" id="send-reply-btn" style="display:none">Send via WhatsApp</button>
+        <button class="btn" onclick="closeDetail()">Close</button>
+        <button class="btn btn-primary" onclick="editFromDetail()">Edit / Update Status</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/tickets.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

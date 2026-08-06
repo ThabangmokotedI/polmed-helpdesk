@@ -1,0 +1,32 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: check the current user's role from the agents collection
+    function getRole() {
+      return get(/databases/$(database)/documents/agents/$(request.auth.uid)).data.get('role', 'agent');
+    }
+    function isAuthenticated() { return request.auth != null; }
+    function isSupervisor()    { return isAuthenticated() && getRole() == 'supervisor'; }
+    function isAgent()         { return isAuthenticated(); }
+
+    // Tickets collection
+    match /tickets/{ticketId} {
+      allow read:   if isAgent();
+      allow create: if isAgent();
+      allow update: if isAgent();
+      allow delete: if isSupervisor();   // ONLY supervisors can delete
+    }
+
+    // Agents / roles collection
+    match /agents/{userId} {
+      // Any authenticated user can read their own role document
+      allow read:  if isAuthenticated() && (request.auth.uid == userId || isSupervisor());
+      // Only supervisors can change roles; new agents auto-created with 'agent' role
+      allow create: if isAuthenticated() && request.auth.uid == userId
+                       && request.resource.data.role == 'agent';
+      allow update: if isSupervisor();
+      allow delete: if isSupervisor();
+    }
+  }
+}
