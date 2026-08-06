@@ -302,7 +302,110 @@ function editTicketById(id) {
   document.getElementById('f-rt-hours').value        = t.rtInHours || '';
   document.getElementById('f-resolution').value      = t.resolutionDescription || '';
   document.getElementById('ticket-overlay').classList.add('open');
+
+  // ── Auto-fill timing fields from the actual conversation timestamps ────────
+  // These are pure math on real timestamps, so they're safe to fill in
+  // automatically without needing an agent to double check them.
+  autoFillTimingFields(t);
 }
+
+// ── Auto-fill: response/resolution timing (fully automatic, timestamp-based) ─
+function autoFillTimingFields(t) {
+  const convo = Array.isArray(t.conversation) ? [...t.conversation].sort((a, b) => new Date(a.at) - new Date(b.at)) : [];
+  if (convo.length === 0) return;
+
+  const firstMemberMsg = convo.find(e => e.from === 'member');
+  const firstAgentMsg  = convo.find(e => e.from === 'agent');
+
+  // Time to First Response — only fill if not already set, so we never
+  // overwrite something an agent typed in manually.
+  const firstResponseField = document.getElementById('f-first-response');
+  if (firstMemberMsg && firstAgentMsg && !firstResponseField.value.trim()) {
+    const diffMs = new Date(firstAgentMsg.at) - new Date(firstMemberMsg.at);
+    if (diffMs > 0) firstResponseField.value = formatDuration(diffMs);
+  }
+
+  // Resolution Time / RT in hours — only auto-fill if the ticket is
+  // currently Resolved and these fields are still empty.
+  const status = document.getElementById('f-status').value;
+  const resTimeField = document.getElementById('f-res-time');
+  const rtHoursField  = document.getElementById('f-rt-hours');
+  if (status === 'Resolved' && firstMemberMsg && !resTimeField.value.trim()) {
+    const resolvedAt = t.updatedAt?.toDate ? t.updatedAt.toDate() : new Date();
+    const diffMs = resolvedAt - new Date(firstMemberMsg.at);
+    if (diffMs > 0) {
+      resTimeField.value = formatDuration(diffMs);
+      rtHoursField.value = (diffMs / 3600000).toFixed(2);
+    }
+  }
+}
+
+function formatDuration(ms) {
+  const mins = Math.round(ms / 60000);
+  if (mins < 60) return `${mins} minute${mins === 1 ? '' : 's'}`;
+  const hours = Math.floor(mins / 60);
+  const remMins = mins % 60;
+  if (hours < 24) return remMins ? `${hours}h ${remMins}m` : `${hours} hour${hours === 1 ? '' : 's'}`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? '' : 's'}`;
+}
+
+// ── Suggest: Issue Type / Description / Resolution Description / Member ID ──
+// These involve interpreting what was actually said, so rather than silently
+// filling them in, this button drafts a best-guess the agent can review,
+// edit, or discard before saving — nothing gets written to Firestore here.
+const ISSUE_KEYWORDS = {
+  'Login Issue':                ['login', 'log in', 'can\'t log', 'cannot log', 'password incorrect', 'wrong password', 'sign in'],
+  'Forgot username/password':   ['forgot my password', 'forgot password', 'forgot username', 'reset password', 'reset my password'],
+  'Onboarding assistance':      ['how do i register', 'how do i sign up', 'new member', 'getting started', 'download the app', 'set up my account'],
+  'Membership & documents':     ['membership card', 'member number', 'membership number', 'certificate', 'proof of membership', 'service provider', 'psychologist', 'doctor', 'network provider'],
+  'Wellness tracker':           ['wellness', 'step tracker', 'points', 'rewards', 'fitness tracker'],
+  'Feature malfunction':        ['not working', 'error', 'crash', 'bug', 'broken', 'glitch', 'won\'t load', 'wont load'],
+  'Huawei user':                ['huawei'],
+};
+
+window.suggestFromConversation = function () {
+  const t = tickets.find(x => x.id === editingId);
+  if (!t) return;
+  const convo = Array.isArray(t.conversation) ? [...t.conversation].sort((a, b) => new Date(a.at) - new Date(b.at)) : [];
+  const memberLines = convo.filter(e => e.from === 'member' && e.text).map(e => e.text);
+  const agentLines  = convo.filter(e => e.from === 'agent'  && e.text).map(e => e.text);
+  const allMemberText = (t.message ? [t.message, ...memberLines] : memberLines).join(' ').toLowerCase();
+
+  // Issue Type — first keyword match wins
+  const issueField = document.getElementById('f-issue');
+  if (!issueField.value) {
+    for (const [type, keywords] of Object.entries(ISSUE_KEYWORDS)) {
+      if (keywords.some(k => allMemberText.includes(k))) {
+        issueField.value = type;
+        break;
+      }
+    }
+  }
+
+  // Description — draft from the member's messages
+  const descField = document.getElementById('f-description');
+  if (!descField.value.trim() && memberLines.length) {
+    descField.value = (t.message ? [t.message, ...memberLines] : memberLines).join(' — ');
+  } else if (!descField.value.trim() && t.message) {
+    descField.value = t.message;
+  }
+
+  // Resolution Description — draft from the agent's messages, only when Resolved
+  const resDescField = document.getElementById('f-resolution');
+  if (document.getElementById('f-status').value === 'Resolved' && !resDescField.value.trim() && agentLines.length) {
+    resDescField.value = agentLines.join(' — ');
+  }
+
+  // Member Identifier — only if a clear standalone number (6–12 digits) appears
+  const identifierField = document.getElementById('f-identifier');
+  if (!identifierField.value.trim()) {
+    const match = allMemberText.match(/\b\d{6,12}\b/);
+    if (match) identifierField.value = match[0];
+  }
+
+  alert('Suggested fields filled in from the conversation — please review before saving, especially Issue Type and Member Identifier.');
+};
 
 function closeModal() {
   document.getElementById('ticket-overlay').classList.remove('open');
@@ -685,4 +788,4 @@ function renderStatusChart(subset) {
     }).join('');
 }
 
-function updateReportPeriod() { renderReports(); }S
+function updateReportPeriod() { renderReports(); }
