@@ -149,6 +149,13 @@ function listenToTickets() {
     const detailOverlay = document.getElementById('detail-overlay');
     if (detailOverlay && detailOverlay.classList.contains('open') && editingId) {
       renderConversation(editingId);
+      // The agent is actively looking at this ticket right now — if a new
+      // message just arrived and flagged it unread, clear that immediately
+      // rather than waiting for them to close and reopen it.
+      const openTicket = tickets.find(x => x.id === editingId);
+      if (openTicket?.hasNewReply) {
+        updateDoc(doc(db, 'tickets', editingId), { hasNewReply: false }).catch(() => {});
+      }
     }
   });
 }
@@ -230,7 +237,9 @@ function renderTable(list) {
     const badge = statusBadge(t.status);
     const ch    = contactIcon(t.contactMethod);
     const date  = t.dateReceived || (t.createdAt?.toDate ? t.createdAt.toDate().toLocaleDateString('en-ZA') : '—');
-    const unreadDot = t.hasNewReply ? `<span class="unread-dot" title="New member reply"></span>` : '';
+    const unreadDot = t.hasNewReply
+      ? `<span class="unread-dot" title="New member reply" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#f59e0b;margin-right:6px;vertical-align:middle;box-shadow:0 0 0 2px rgba(245,158,11,0.25)"></span>`
+      : '';
     return `<div class="table-row" onclick="viewTicket('${t.id}')">
       <div class="td"><span class="tid-pill">${unreadDot}${t.ticketId || '—'}</span></div>
       <div class="td mono">${t.identifier || '—'}</div>
@@ -676,4 +685,4 @@ function renderStatusChart(subset) {
     }).join('');
 }
 
-function updateReportPeriod() { renderReports(); }
+function updateReportPeriod() { renderReports(); }S
