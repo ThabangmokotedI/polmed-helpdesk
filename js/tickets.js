@@ -272,6 +272,7 @@ function openNewTicket() {
   document.getElementById('modal-title').textContent = 'New Support Ticket';
   document.getElementById('modal-tid').textContent   = '';
   document.getElementById('wa-tip').style.display    = 'flex';
+  document.getElementById('suggest-btn').style.display = 'none';
   document.getElementById('delete-btn').style.display = 'none';
   document.getElementById('save-btn').textContent    = 'Log Ticket';
   clearForm();
@@ -286,6 +287,7 @@ function editTicketById(id) {
   document.getElementById('modal-title').textContent = 'Edit Ticket';
   document.getElementById('modal-tid').textContent   = t.ticketId || '';
   document.getElementById('wa-tip').style.display    = 'none';
+  document.getElementById('suggest-btn').style.display = 'inline-flex';
   // Delete button only visible to supervisors
   document.getElementById('delete-btn').style.display =
     currentRole === 'supervisor' ? 'inline-flex' : 'none';
@@ -350,7 +352,19 @@ function formatDuration(ms) {
   return `${days} day${days === 1 ? '' : 's'}`;
 }
 
-// ── Suggest: Issue Type / Description / Resolution Description / Member ID ──
+// Re-run automatic timing fill if the agent switches status to Resolved
+// while the edit form is already open (not just when it first loads).
+document.addEventListener('DOMContentLoaded', () => {
+  const statusField = document.getElementById('f-status');
+  if (statusField) {
+    statusField.addEventListener('change', () => {
+      if (editingId) {
+        const t = tickets.find(x => x.id === editingId);
+        if (t) autoFillTimingFields(t);
+      }
+    });
+  }
+});
 // These involve interpreting what was actually said, so rather than silently
 // filling them in, this button drafts a best-guess the agent can review,
 // edit, or discard before saving — nothing gets written to Firestore here.
