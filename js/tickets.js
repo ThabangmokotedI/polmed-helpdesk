@@ -367,6 +367,13 @@ function viewTicket(id) {
       <div class="detail-section-label">Original message</div>
       <div class="detail-block">${t.message || '—'}</div>
     </div>
+    ${t.mediaUrl ? `
+    <div class="detail-section">
+      <div class="detail-section-label">Attachment</div>
+      ${t.mediaType === 'image'
+        ? `<img src="${t.mediaUrl}" alt="Attachment from member" style="max-width:100%;border-radius:8px;border:1px solid #ddd">`
+        : `<a href="${t.mediaUrl}" target="_blank" rel="noopener" class="btn btn-sm">Open ${t.mediaType || 'file'}</a>`}
+    </div>` : ''}
     <div class="detail-section">
       <div class="detail-section-label">Description</div>
       <div class="detail-block">${t.description || '—'}</div>
