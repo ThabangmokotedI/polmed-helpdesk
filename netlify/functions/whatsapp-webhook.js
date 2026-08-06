@@ -147,6 +147,7 @@ exports.handler = async function (event) {
         conversation: admin.firestore.FieldValue.arrayUnion(newEntry),
         lastMemberMessage: text,
         lastMemberMessageAt: admin.firestore.FieldValue.serverTimestamp(),
+        hasNewReply: true,
         updatedBy: 'WhatsApp webhook',
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       });

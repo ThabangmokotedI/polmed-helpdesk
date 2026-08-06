@@ -177,6 +177,21 @@ function renderNewCount() {
   if (!box || !counter) return;
   counter.textContent   = newCount;
   box.style.display = newCount > 0 ? 'inline-flex' : 'none';
+  renderUnreadCount();
+}
+
+function renderUnreadCount() {
+  const unreadCount = tickets.filter(t => t.hasNewReply).length;
+  const box     = document.getElementById('unread-count-box');
+  const counter = document.getElementById('unread-count');
+  if (!box || !counter) return;
+  counter.textContent = unreadCount;
+  box.style.display = unreadCount > 0 ? 'inline-flex' : 'none';
+  // Flash the browser tab title so it's noticeable even if the dashboard
+  // tab isn't the one currently focused.
+  document.title = unreadCount > 0
+    ? `(${unreadCount}) New reply — Polmed Helpdesk`
+    : 'Polmed Connect — Helpdesk Tracker';
 }
 
 // ── Filter & render table ─────────────────────────────────────────────────────
@@ -215,8 +230,9 @@ function renderTable(list) {
     const badge = statusBadge(t.status);
     const ch    = contactIcon(t.contactMethod);
     const date  = t.dateReceived || (t.createdAt?.toDate ? t.createdAt.toDate().toLocaleDateString('en-ZA') : '—');
+    const unreadDot = t.hasNewReply ? `<span class="unread-dot" title="New member reply"></span>` : '';
     return `<div class="table-row" onclick="viewTicket('${t.id}')">
-      <div class="td"><span class="tid-pill">${t.ticketId || '—'}</span></div>
+      <div class="td"><span class="tid-pill">${unreadDot}${t.ticketId || '—'}</span></div>
       <div class="td mono">${t.identifier || '—'}</div>
       <div class="td issue">${t.issueType || '—'}</div>
       <div class="td desc">${t.description || '—'}</div>
@@ -403,6 +419,11 @@ function viewTicket(id) {
   document.getElementById('send-reply-btn').style.display = canReplyByWhatsApp ? 'inline-flex' : 'none';
   document.getElementById('detail-overlay').classList.add('open');
   if (canReplyByWhatsApp) renderConversation(id);
+
+  // Mark as read — clears the unread badge now that the agent has opened it
+  if (t.hasNewReply) {
+    updateDoc(doc(db, 'tickets', id), { hasNewReply: false }).catch(() => {});
+  }
 }
 
 // ── Conversation thread (WhatsApp back-and-forth) ───────────────────────────
