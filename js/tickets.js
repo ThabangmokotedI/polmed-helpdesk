@@ -133,10 +133,33 @@ function updateEnvironmentBadge() {
 }
 
 // ── Tickets listener ──────────────────────────────────────────────────────────
+
+// Most recent activity for a ticket (creation, last update, or last
+// conversation message — whichever is newest), so a ticket that just got a
+// new reply jumps back to the top even if it's old or already Resolved.
+function ticketActivityTime(t) {
+  let latest = 0;
+  const bump = (val) => { if (val && val > latest) latest = val; };
+
+  if (t.createdAt?.toDate) bump(t.createdAt.toDate().getTime());
+  else if (t.dateReceived) bump(new Date(t.dateReceived).getTime());
+
+  if (t.updatedAt?.toDate) bump(t.updatedAt.toDate().getTime());
+
+  if (Array.isArray(t.conversation)) {
+    t.conversation.forEach(entry => {
+      if (entry.at) bump(new Date(entry.at).getTime());
+    });
+  }
+  return latest;
+}
+
 function listenToTickets() {
   const q = query(collection(db, 'tickets'), orderBy('createdAt', 'desc'));
   onSnapshot(q, (snapshot) => {
-    tickets = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    tickets = snapshot.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => ticketActivityTime(b) - ticketActivityTime(a));
     renderStats();
     filterTickets();
     // Re-render reports if on that page

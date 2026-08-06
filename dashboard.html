@@ -8,6 +8,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/app.css">
+  <link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/conversation-thread.css">
 </head>
 <body style="visibility:hidden">
 
@@ -120,6 +122,7 @@
             <option>WhatsApp</option>
             <option>Email</option>
             <option>Phone call</option>
+            <option>In person</option>
           </select>
           <select id="filter-issue" onchange="filterTickets()">
             <option value="">All issue types</option>
@@ -190,6 +193,10 @@
             <div class="kpi-label">Phone</div>
             <div class="kpi-num" id="r-phone">—</div>
           </div>
+          <div class="kpi-card">
+            <div class="kpi-label">In Person</div>
+            <div class="kpi-num inp" id="r-inperson">—</div>
+          </div>
         </div>
 
         <!-- Charts -->
@@ -198,13 +205,25 @@
             <div class="chart-title">Tickets per Month (Last 6 months)</div>
             <div id="monthly-chart" class="vbar-container"></div>
           </div>
+
+          <div class="chart-card">
+            <div class="chart-title">Status Breakdown</div>
+            <div id="status-chart" class="donut-container"></div>
+          </div>
+
+          <div class="chart-card">
+            <div class="chart-title">Contact Method</div>
+            <div id="contact-chart" class="donut-container"></div>
+          </div>
+
           <div class="chart-card">
             <div class="chart-title">Issue Type Breakdown</div>
             <div id="issue-chart" class="hbar-container"></div>
           </div>
+
           <div class="chart-card">
-            <div class="chart-title">Status Breakdown</div>
-            <div id="status-chart" class="hbar-container"></div>
+            <div class="chart-title">Resolution Time</div>
+            <div id="resolution-chart" class="hbar-container"></div>
           </div>
         </div>
       </section>
@@ -389,6 +408,7 @@ style="margin-bottom:16px;display:none">
               <option>WhatsApp</option>
               <option>Email</option>
               <option>Phone call</option>
+              <option>In person</option>
             </select>
           </div>
           <div class="form-group">
