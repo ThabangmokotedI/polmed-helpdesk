@@ -115,8 +115,21 @@ exports.handler = async function (event) {
       console.error('Media fetch/store failed:', err.message);
       text = `[${message.type} attached — could not be retrieved, ask member to resend]`;
     }
+  } else if (message.type === 'reaction') {
+    // Member tapped an emoji reaction on a previous message (e.g. 👍 on your reply).
+    // message.reaction.emoji is '' if they removed a reaction rather than added one.
+    const emoji = message.reaction?.emoji;
+    text = emoji ? `Reacted ${emoji} to a previous message` : 'Removed their reaction to a previous message';
+  } else if (message.type === 'location') {
+    const loc = message.location;
+    text = loc?.name
+      ? `[Location shared: ${loc.name}]`
+      : `[Location shared: ${loc?.latitude}, ${loc?.longitude}]`;
+  } else if (message.type === 'contacts') {
+    const names = (message.contacts || []).map(c => c.name?.formatted_name).filter(Boolean).join(', ');
+    text = names ? `[Contact card shared: ${names}]` : '[Contact card shared]';
   } else if (!text) {
-    text = '[Unsupported message type]';
+    text = `[Unsupported message type: ${message.type || 'unknown'}]`;
   }
 
   try {
