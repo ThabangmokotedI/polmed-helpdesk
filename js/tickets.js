@@ -171,6 +171,7 @@ function listenToTickets() {
     const detailOverlay = document.getElementById('detail-overlay');
     if (detailOverlay && detailOverlay.classList.contains('open') && editingId) {
       renderConversation(editingId);
+      renderTypingBanner(editingId);
       const openTicket = tickets.find(x => x.id === editingId);
       if (openTicket?.hasNewReply) {
         updateDoc(doc(db, 'tickets', editingId), { hasNewReply: false }).catch(() => {});
@@ -570,9 +571,7 @@ function viewTicket(id) {
     ${t.mediaUrl ? `
     <div class="detail-section">
       <div class="detail-section-label">Attachment</div>
-      ${t.mediaType === 'image'
-        ? `<img src="${t.mediaUrl}" alt="Attachment from member" style="max-width:100%;border-radius:8px;border:1px solid #ddd">`
-        : `<a href="${t.mediaUrl}" target="_blank" rel="noopener" class="btn btn-sm">Open ${t.mediaType || 'file'}</a>`}
+      ${renderMediaHTML(t.mediaUrl, t.mediaType, 'large')}
     </div>` : ''}
     ${canReplyByWhatsApp ? `
     <div class="detail-section">
@@ -587,6 +586,7 @@ function viewTicket(id) {
     ${canReplyByWhatsApp ? `
     <div class="detail-section">
       <div class="detail-section-label">Reply to member (WhatsApp)</div>
+      <div id="typing-indicator" style="display:none;align-items:center;gap:6px;background:#FEF3C7;border:1px solid #FDE68A;color:#92400E;font-size:12px;font-weight:500;padding:7px 12px;border-radius:8px;margin-bottom:8px"></div>
       <select id="quick-reply-select" style="width:100%;margin-bottom:8px;padding:7px;border-radius:8px;border:1px solid #ddd;font:inherit;background:#fafafa"></select>
       <textarea id="detail-reply-text" rows="3"
         style="width:100%;box-sizing:border-box;padding:8px;border-radius:8px;border:1px solid #ddd;font:inherit;resize:vertical"
@@ -599,11 +599,30 @@ function viewTicket(id) {
   if (canReplyByWhatsApp) {
     renderConversation(id);
     if (typeof populateQuickReplies === 'function') populateQuickReplies();
+    setupTypingIndicator(id);
+    renderTypingBanner(id);
+    startTypingWatch(id);
   }
 
   if (t.hasNewReply) {
     updateDoc(doc(db, 'tickets', id), { hasNewReply: false }).catch(() => {});
   }
+}
+
+// ── Media rendering (images, video, voice notes, other files) ───────────────
+function renderMediaHTML(url, type, size) {
+  if (!url) return '';
+  const maxW = size === 'small' ? '200px' : '100%';
+  if (type === 'image' || type === 'sticker') {
+    return `<img src="${url}" alt="Attachment" style="max-width:${maxW};border-radius:8px;border:1px solid #ddd;display:block;margin-top:6px">`;
+  }
+  if (type === 'video') {
+    return `<video src="${url}" controls preload="metadata" style="max-width:${maxW};border-radius:8px;border:1px solid #ddd;display:block;margin-top:6px"></video>`;
+  }
+  if (type === 'audio' || type === 'voice' || type === 'ptt') {
+    return `<audio src="${url}" controls preload="metadata" style="width:${size === 'small' ? '220px' : '100%'};display:block;margin-top:6px"></audio>`;
+  }
+  return `<a href="${url}" target="_blank" rel="noopener" class="btn btn-sm" style="margin-top:6px;display:inline-block">Open ${type || 'file'}</a>`;
 }
 
 // ── Conversation thread (WhatsApp back-and-forth) ───────────────────────────
@@ -623,11 +642,7 @@ function renderConversation(id) {
   el.innerHTML = sorted.map(entry => {
     const isAgent = entry.from === 'agent';
     const when = entry.at ? new Date(entry.at).toLocaleString() : '';
-    const mediaHtml = entry.mediaUrl
-      ? (entry.mediaType === 'image'
-          ? `<img src="${entry.mediaUrl}" alt="attachment" style="max-width:200px;border-radius:6px;display:block;margin-top:6px">`
-          : `<a href="${entry.mediaUrl}" target="_blank" rel="noopener">Open attachment</a>`)
-      : '';
+    const mediaHtml = renderMediaHTML(entry.mediaUrl, entry.mediaType, 'small');
     return `
       <div class="convo-bubble ${isAgent ? 'convo-agent' : 'convo-member'}">
         <div class="convo-meta">${isAgent ? 'You (agent)' : 'Member'} · ${when}</div>
@@ -640,7 +655,86 @@ function renderConversation(id) {
   el.scrollTop = el.scrollHeight;
 }
 
-function closeDetail()    { document.getElementById('detail-overlay').classList.remove('open'); }
+// ── "Someone is already replying" indicator ──────────────────────────────────
+// Stored on the ticket doc as typingBy.<uid> = { email, at } (a plain millis
+// timestamp, not serverTimestamp, so we can check staleness locally without
+// a round trip). An entry older than TYPING_TTL_MS is treated as gone even
+// if it was never explicitly cleared (e.g. the agent's tab crashed).
+const TYPING_TTL_MS = 6000;
+let typingStopTimer  = null;
+let typingWatchTimer = null;
+let lastTypingWrite   = 0;
+
+function setupTypingIndicator(ticketId) {
+  const textarea = document.getElementById('detail-reply-text');
+  if (!textarea) return;
+  textarea.addEventListener('input', () => {
+    markTyping(ticketId);
+    clearTimeout(typingStopTimer);
+    typingStopTimer = setTimeout(() => clearTyping(ticketId), 4000);
+  });
+}
+
+async function markTyping(ticketId) {
+  if (!currentUser) return;
+  const now = Date.now();
+  if (now - lastTypingWrite < 2000) return; // throttle writes while actively typing
+  lastTypingWrite = now;
+  try {
+    await updateDoc(doc(db, 'tickets', ticketId), {
+      [`typingBy.${currentUser.uid}`]: { email: currentUser.email, at: now }
+    });
+  } catch { /* best-effort, don't interrupt typing on a failed write */ }
+}
+
+async function clearTyping(ticketId) {
+  if (!currentUser || !ticketId) return;
+  lastTypingWrite = 0;
+  try {
+    await updateDoc(doc(db, 'tickets', ticketId), {
+      [`typingBy.${currentUser.uid}`]: null
+    });
+  } catch { /* ignore */ }
+}
+
+function renderTypingBanner(ticketId) {
+  const t  = tickets.find(x => x.id === ticketId);
+  const el = document.getElementById('typing-indicator');
+  if (!t || !el) return;
+  const now = Date.now();
+  const others = Object.entries(t.typingBy || {})
+    .filter(([uid, info]) => uid !== currentUser?.uid && info && info.at && (now - info.at) < TYPING_TTL_MS)
+    .map(([, info]) => info.email.split('@')[0]);
+  if (others.length) {
+    el.style.display = 'flex';
+    el.innerHTML = `✏️ <strong>${others.join(', ')}</strong> ${others.length > 1 ? 'are' : 'is'} already replying to this member right now — check before you send.`;
+  } else {
+    el.style.display = 'none';
+    el.innerHTML = '';
+  }
+}
+
+function startTypingWatch(ticketId) {
+  stopTypingWatch();
+  // Re-checks staleness every couple of seconds even without a new
+  // Firestore snapshot, so a stuck/crashed tab's indicator still clears.
+  typingWatchTimer = setInterval(() => renderTypingBanner(ticketId), 2000);
+}
+
+function stopTypingWatch() {
+  if (typingWatchTimer) { clearInterval(typingWatchTimer); typingWatchTimer = null; }
+}
+
+window.addEventListener('beforeunload', () => {
+  if (editingId) clearTyping(editingId);
+});
+
+function closeDetail() {
+  if (editingId) clearTyping(editingId);
+  clearTimeout(typingStopTimer);
+  stopTypingWatch();
+  document.getElementById('detail-overlay').classList.remove('open');
+}
 function editFromDetail() { closeDetail(); editTicketById(editingId); }
 
 window.copyReply = function () {
@@ -681,6 +775,8 @@ window.sendWhatsAppReply = async function () {
     // Bump the ticket's activity time immediately so it re-sorts to the top
     // without waiting on the webhook to write the conversation entry back.
     updateDoc(doc(db, 'tickets', t.id), { updatedAt: serverTimestamp() }).catch(() => {});
+    clearTimeout(typingStopTimer);
+    clearTyping(t.id);
   } catch (e) {
     alert('Error sending WhatsApp reply: ' + e.message);
   }
