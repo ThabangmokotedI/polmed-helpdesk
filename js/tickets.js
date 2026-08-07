@@ -154,7 +154,15 @@ function listenToTickets() {
   onSnapshot(q, (snapshot) => {
     tickets = snapshot.docs
       .map(d => ({ id: d.id, ...d.data() }))
-      .sort((a, b) => ticketActivityTime(b) - ticketActivityTime(a));
+      .sort((a, b) => {
+        // New / unread tickets are always pinned above everything else,
+        // so they never get buried by scrolling. Within each group,
+        // most recently active ticket (including replies) comes first.
+        const aPin = (a.hasNewReply || a.status === 'New') ? 1 : 0;
+        const bPin = (b.hasNewReply || b.status === 'New') ? 1 : 0;
+        if (aPin !== bPin) return bPin - aPin;
+        return ticketActivityTime(b) - ticketActivityTime(a);
+      });
     renderStats();
     filterTickets();
     if (document.getElementById('page-reports')?.style.display !== 'none') {
@@ -198,16 +206,67 @@ function renderNewCount() {
   renderUnreadCount();
 }
 
+// ── Unread notifications: badge + flashing tab title + sound alert ───────────
+let lastUnreadCount = 0;
+let flashInterval   = null;
+const BASE_TITLE    = 'Polmed Connect — Helpdesk Tracker';
+
 function renderUnreadCount() {
   const unreadCount = tickets.filter(t => t.hasNewReply).length;
   const box     = document.getElementById('unread-count-box');
   const counter = document.getElementById('unread-count');
-  if (!box || !counter) return;
-  counter.textContent = unreadCount;
-  box.style.display = unreadCount > 0 ? 'inline-flex' : 'none';
-  document.title = unreadCount > 0
-    ? `(${unreadCount}) New reply — Polmed Helpdesk`
-    : 'Polmed Connect — Helpdesk Tracker';
+  if (box && counter) {
+    counter.textContent = unreadCount;
+    box.style.display = unreadCount > 0 ? 'inline-flex' : 'none';
+  }
+
+  // Only alert when unread count goes UP (a genuinely new event),
+  // not on every re-render.
+  if (unreadCount > lastUnreadCount) {
+    playAlertSound();
+  }
+  lastUnreadCount = unreadCount;
+
+  if (unreadCount > 0) {
+    startTitleFlash(unreadCount);
+  } else {
+    stopTitleFlash();
+  }
+}
+
+function startTitleFlash(count) {
+  if (flashInterval) return; // already flashing
+  let showAlert = true;
+  flashInterval = setInterval(() => {
+    document.title = showAlert ? `🔴 (${count}) New reply!` : BASE_TITLE;
+    showAlert = !showAlert;
+  }, 1000);
+}
+
+function stopTitleFlash() {
+  if (flashInterval) {
+    clearInterval(flashInterval);
+    flashInterval = null;
+  }
+  document.title = BASE_TITLE;
+}
+
+function playAlertSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.value = 880;
+    g.gain.value = 0.15;
+    o.connect(g);
+    g.connect(ctx.destination);
+    o.start();
+    setTimeout(() => { o.stop(); ctx.close(); }, 220);
+  } catch {
+    // Browsers block audio until the user has interacted with the page at
+    // least once in the session — this is normal, not a bug.
+  }
 }
 
 // ── Filter & render table ─────────────────────────────────────────────────────
@@ -619,6 +678,9 @@ window.sendWhatsAppReply = async function () {
       throw new Error(result?.error?.error?.message || 'Send failed. Note: WhatsApp only allows free-form replies within 24 hours of the member\'s last message — after that, only a pre-approved template can be sent.');
     }
     alert('Reply sent to the member on WhatsApp.');
+    // Bump the ticket's activity time immediately so it re-sorts to the top
+    // without waiting on the webhook to write the conversation entry back.
+    updateDoc(doc(db, 'tickets', t.id), { updatedAt: serverTimestamp() }).catch(() => {});
   } catch (e) {
     alert('Error sending WhatsApp reply: ' + e.message);
   }
@@ -642,7 +704,10 @@ function statusBadge(s) {
   return `<span class="badge ${map[s] || ''}">${s || '—'}</span>`;
 }
 function contactIcon(c) {
-  return { 'WhatsApp': '📱', 'Email': '📧', 'Phone call': '📞', 'In person': '🧑‍💼' }[c] || '';
+  if (c === 'WhatsApp') {
+    return `<svg viewBox="0 0 24 24" width="14" height="14" fill="#25D366" style="vertical-align:-2px"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.39 1.26 4.81L2 22l5.42-1.36c1.36.72 2.9 1.13 4.62 1.13 5.46 0 9.91-4.45 9.91-9.91S17.5 2 12.04 2zm5.63 14.13c-.24.67-1.4 1.28-1.93 1.34-.53.06-1.02.25-3.44-.72-2.9-1.16-4.75-4.06-4.9-4.25-.14-.19-1.18-1.57-1.18-3s.75-2.13 1.02-2.42c.27-.29.58-.36.78-.36.19 0 .39 0 .56.01.18.01.42-.07.66.5.24.58.83 2 .9 2.14.07.14.12.31.02.5-.1.19-.15.31-.29.48-.15.17-.31.38-.44.51-.14.14-.3.3-.13.58.17.29.77 1.27 1.65 2.06 1.14 1.02 2.1 1.33 2.38 1.48.29.14.46.12.63-.07.17-.19.72-.84.92-1.13.19-.29.38-.24.63-.14.26.1 1.65.78 1.93.92.29.14.48.22.55.34.07.12.07.7-.17 1.37z"/></svg>`;
+  }
+  return { 'Email': '📧', 'Phone call': '📞', 'In person': '🧑‍💼' }[c] || '';
 }
 function clearForm() {
   ['f-contact','f-identifier','f-issue','f-description','f-date','f-time',
