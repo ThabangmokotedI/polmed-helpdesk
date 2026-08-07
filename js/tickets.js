@@ -2,8 +2,6 @@
 import { firebaseConfig } from './firebase-config.js';
 
 const isConfigured = firebaseConfig.apiKey && !firebaseConfig.apiKey.startsWith('REPLACE');
-const demoMode = localStorage.getItem('polmedDemoMode') === 'true' ||
-  (!isConfigured && !!localStorage.getItem('polmedDemoEmail'));
 
 // ── Firebase module imports ───────────────────────────────────────────────────
 let initializeApp, getAuth, onAuthStateChanged, fbSignOut;
@@ -69,15 +67,6 @@ window.updateReportPeriod = updateReportPeriod;
 onAuthStateChanged(auth, async (user) => {
   updateEnvironmentBadge();
   if (!user) {
-    if (demoMode) {
-      const email = localStorage.getItem('polmedDemoEmail');
-      if (email) {
-        currentUser = { uid: 'demo-uid', email };
-        currentRole = localStorage.getItem('polmedDemoRole') || 'supervisor'; // demo = supervisor
-        finishLoad();
-        return;
-      }
-    }
     window.location.href = 'index.html';
     return;
   }
@@ -122,8 +111,8 @@ function setAgentUI(email, role) {
 function updateEnvironmentBadge() {
   const badge = document.getElementById('env-badge');
   if (!badge) return;
-  if (demoMode) {
-    badge.innerHTML = '<span class="live-dot"></span> Demo mode';
+  if (!isConfigured) {
+    badge.innerHTML = '<span class="live-dot"></span> Local mock (no Firebase config)';
     badge.classList.add('demo');
   } else {
     badge.innerHTML = '<span class="live-dot"></span> Live';
@@ -787,10 +776,6 @@ window.sendWhatsAppReply = async function () {
 // ── Sign out ──────────────────────────────────────────────────────────────────
 async function signOut() {
   try { await fbSignOut(auth); } catch { /* ignore */ }
-  localStorage.removeItem('testUser');
-  localStorage.removeItem('polmedDemoMode');
-  localStorage.removeItem('polmedDemoEmail');
-  localStorage.removeItem('polmedDemoRole');
   window.location.href = 'index.html';
 }
 
