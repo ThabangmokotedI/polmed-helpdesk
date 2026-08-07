@@ -90,7 +90,6 @@ async function fetchUserRole(uid) {
   try {
     const snap = await getDoc(doc(db, 'agents', uid));
     if (snap.exists()) return snap.data().role || 'agent';
-    // Auto-create agent document on first login (role = 'agent')
     await setDoc(doc(db, 'agents', uid), {
       email: currentUser.email,
       role: 'agent',
@@ -98,7 +97,7 @@ async function fetchUserRole(uid) {
     });
     return 'agent';
   } catch {
-    return 'agent'; // safe default
+    return 'agent';
   }
 }
 
@@ -133,10 +132,6 @@ function updateEnvironmentBadge() {
 }
 
 // ── Tickets listener ──────────────────────────────────────────────────────────
-
-// Most recent activity for a ticket (creation, last update, or last
-// conversation message — whichever is newest), so a ticket that just got a
-// new reply jumps back to the top even if it's old or already Resolved.
 function ticketActivityTime(t) {
   let latest = 0;
   const bump = (val) => { if (val && val > latest) latest = val; };
@@ -162,19 +157,12 @@ function listenToTickets() {
       .sort((a, b) => ticketActivityTime(b) - ticketActivityTime(a));
     renderStats();
     filterTickets();
-    // Re-render reports if on that page
     if (document.getElementById('page-reports')?.style.display !== 'none') {
       renderReports();
     }
-    // If the detail modal is currently open on a ticket, refresh its
-    // conversation thread live so a new member reply appears without
-    // the agent needing to close and reopen the modal.
     const detailOverlay = document.getElementById('detail-overlay');
     if (detailOverlay && detailOverlay.classList.contains('open') && editingId) {
       renderConversation(editingId);
-      // The agent is actively looking at this ticket right now — if a new
-      // message just arrived and flagged it unread, clear that immediately
-      // rather than waiting for them to close and reopen it.
       const openTicket = tickets.find(x => x.id === editingId);
       if (openTicket?.hasNewReply) {
         updateDoc(doc(db, 'tickets', editingId), { hasNewReply: false }).catch(() => {});
@@ -217,8 +205,6 @@ function renderUnreadCount() {
   if (!box || !counter) return;
   counter.textContent = unreadCount;
   box.style.display = unreadCount > 0 ? 'inline-flex' : 'none';
-  // Flash the browser tab title so it's noticeable even if the dashboard
-  // tab isn't the one currently focused.
   document.title = unreadCount > 0
     ? `(${unreadCount}) New reply — Polmed Helpdesk`
     : 'Polmed Connect — Helpdesk Tracker';
@@ -311,7 +297,6 @@ function editTicketById(id) {
   document.getElementById('modal-tid').textContent   = t.ticketId || '';
   document.getElementById('wa-tip').style.display    = 'none';
   document.getElementById('suggest-btn').style.display = 'inline-flex';
-  // Delete button only visible to supervisors
   document.getElementById('delete-btn').style.display =
     currentRole === 'supervisor' ? 'inline-flex' : 'none';
   document.getElementById('save-btn').textContent    = 'Save Changes';
@@ -328,13 +313,9 @@ function editTicketById(id) {
   document.getElementById('f-resolution').value      = t.resolutionDescription || '';
   document.getElementById('ticket-overlay').classList.add('open');
 
-  // ── Auto-fill timing fields from the actual conversation timestamps ────────
-  // These are pure math on real timestamps, so they're safe to fill in
-  // automatically without needing an agent to double check them.
   autoFillTimingFields(t);
 }
 
-// ── Auto-fill: response/resolution timing (fully automatic, timestamp-based) ─
 function autoFillTimingFields(t) {
   const convo = Array.isArray(t.conversation) ? [...t.conversation].sort((a, b) => new Date(a.at) - new Date(b.at)) : [];
   if (convo.length === 0) return;
@@ -342,16 +323,12 @@ function autoFillTimingFields(t) {
   const firstMemberMsg = convo.find(e => e.from === 'member');
   const firstAgentMsg  = convo.find(e => e.from === 'agent');
 
-  // Time to First Response — only fill if not already set, so we never
-  // overwrite something an agent typed in manually.
   const firstResponseField = document.getElementById('f-first-response');
   if (firstMemberMsg && firstAgentMsg && !firstResponseField.value.trim()) {
     const diffMs = new Date(firstAgentMsg.at) - new Date(firstMemberMsg.at);
     if (diffMs > 0) firstResponseField.value = formatDuration(diffMs);
   }
 
-  // Resolution Time / RT in hours — only auto-fill if the ticket is
-  // currently Resolved and these fields are still empty.
   const status = document.getElementById('f-status').value;
   const resTimeField = document.getElementById('f-res-time');
   const rtHoursField  = document.getElementById('f-rt-hours');
@@ -375,8 +352,6 @@ function formatDuration(ms) {
   return `${days} day${days === 1 ? '' : 's'}`;
 }
 
-// Re-run automatic timing fill if the agent switches status to Resolved
-// while the edit form is already open (not just when it first loads).
 document.addEventListener('DOMContentLoaded', () => {
   const statusField = document.getElementById('f-status');
   if (statusField) {
@@ -388,9 +363,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
-// These involve interpreting what was actually said, so rather than silently
-// filling them in, this button drafts a best-guess the agent can review,
-// edit, or discard before saving — nothing gets written to Firestore here.
+
 const ISSUE_KEYWORDS = {
   'Login Issue':                ['login', 'log in', 'can\'t log', 'cannot log', 'password incorrect', 'wrong password', 'sign in'],
   'Forgot username/password':   ['forgot my password', 'forgot password', 'forgot username', 'reset password', 'reset my password'],
@@ -409,7 +382,6 @@ window.suggestFromConversation = function () {
   const agentLines  = convo.filter(e => e.from === 'agent'  && e.text).map(e => e.text);
   const allMemberText = (t.message ? [t.message, ...memberLines] : memberLines).join(' ').toLowerCase();
 
-  // Issue Type — first keyword match wins
   const issueField = document.getElementById('f-issue');
   if (!issueField.value) {
     for (const [type, keywords] of Object.entries(ISSUE_KEYWORDS)) {
@@ -420,7 +392,6 @@ window.suggestFromConversation = function () {
     }
   }
 
-  // Description — draft from the member's messages
   const descField = document.getElementById('f-description');
   if (!descField.value.trim() && memberLines.length) {
     descField.value = (t.message ? [t.message, ...memberLines] : memberLines).join(' — ');
@@ -428,13 +399,11 @@ window.suggestFromConversation = function () {
     descField.value = t.message;
   }
 
-  // Resolution Description — draft from the agent's messages, only when Resolved
   const resDescField = document.getElementById('f-resolution');
   if (document.getElementById('f-status').value === 'Resolved' && !resDescField.value.trim() && agentLines.length) {
     resDescField.value = agentLines.join(' — ');
   }
 
-  // Member Identifier — only if a clear standalone number (6–12 digits) appears
   const identifierField = document.getElementById('f-identifier');
   if (!identifierField.value.trim()) {
     const match = allMemberText.match(/\b\d{6,12}\b/);
@@ -559,6 +528,7 @@ function viewTicket(id) {
     ${canReplyByWhatsApp ? `
     <div class="detail-section">
       <div class="detail-section-label">Reply to member (WhatsApp)</div>
+      <select id="quick-reply-select" style="width:100%;margin-bottom:8px;padding:7px;border-radius:8px;border:1px solid #ddd;font:inherit;background:#fafafa"></select>
       <textarea id="detail-reply-text" rows="3"
         style="width:100%;box-sizing:border-box;padding:8px;border-radius:8px;border:1px solid #ddd;font:inherit;resize:vertical"
       >${suggestedReply}</textarea>
@@ -567,9 +537,11 @@ function viewTicket(id) {
   document.getElementById('copy-reply-btn').style.display = t.ticketId ? 'inline-flex' : 'none';
   document.getElementById('send-reply-btn').style.display = canReplyByWhatsApp ? 'inline-flex' : 'none';
   document.getElementById('detail-overlay').classList.add('open');
-  if (canReplyByWhatsApp) renderConversation(id);
+  if (canReplyByWhatsApp) {
+    renderConversation(id);
+    if (typeof populateQuickReplies === 'function') populateQuickReplies();
+  }
 
-  // Mark as read — clears the unread badge now that the agent has opened it
   if (t.hasNewReply) {
     updateDoc(doc(db, 'tickets', id), { hasNewReply: false }).catch(() => {});
   }
@@ -578,7 +550,7 @@ function viewTicket(id) {
 // ── Conversation thread (WhatsApp back-and-forth) ───────────────────────────
 function renderConversation(id) {
   const el = document.getElementById('conversation-thread');
-  if (!el) return; // modal isn't showing the thread (not a WhatsApp ticket) — nothing to do
+  if (!el) return;
   const t = tickets.find(x => x.id === id);
   if (!t) return;
 
@@ -606,7 +578,6 @@ function renderConversation(id) {
     `;
   }).join('');
 
-  // Keep the thread scrolled to the latest message
   el.scrollTop = el.scrollHeight;
 }
 
@@ -667,11 +638,11 @@ async function signOut() {
 
 // ── Badges / icons ────────────────────────────────────────────────────────────
 function statusBadge(s) {
-  const map = { 'New': 'new', 'Resolved': 'res', 'In Progress': 'prog', 'Unresolved': 'unres' };
+  const map = { 'New': 'new', 'Resolved': 'res', 'In Progress': 'prog', 'Unresolved': 'unres', 'Redirected': 'redir' };
   return `<span class="badge ${map[s] || ''}">${s || '—'}</span>`;
 }
 function contactIcon(c) {
-  return { 'WhatsApp': '📱', 'Email': '📧', 'Phone call': '📞' }[c] || '';
+  return { 'WhatsApp': '📱', 'Email': '📧', 'Phone call': '📞', 'In person': '🧑‍💼' }[c] || '';
 }
 function clearForm() {
   ['f-contact','f-identifier','f-issue','f-description','f-date','f-time',
@@ -688,18 +659,19 @@ function renderReports() {
   const period  = document.getElementById('report-period')?.value || 'all';
   const subset  = applyPeriodFilter(tickets, period);
 
-  // KPIs
   const total      = subset.length;
   const resolved   = subset.filter(t => t.status === 'Resolved').length;
+const handled    = subset.filter(t => t.status === 'Resolved' || t.status === 'Redirected').length;
   const rtValues   = subset.filter(t => t.rtInHours > 0 && t.status === 'Resolved')
                            .map(t => t.rtInHours);
   const avgRT      = rtValues.length
     ? (rtValues.reduce((a, b) => a + b, 0) / rtValues.length).toFixed(1)
     : '—';
-  const resRate    = total ? Math.round((resolved / total) * 100) : 0;
+  const resRate    = total ? Math.round((handled / total) * 100) : 0;
   const waCount    = subset.filter(t => t.contactMethod === 'WhatsApp').length;
   const emCount    = subset.filter(t => t.contactMethod === 'Email').length;
   const phCount    = subset.filter(t => t.contactMethod === 'Phone call').length;
+  const inpCount   = subset.filter(t => t.contactMethod === 'In person').length;
 
   document.getElementById('r-total').textContent   = total;
   document.getElementById('r-avg-rt').textContent  = avgRT === '—' ? '—' : avgRT + ' hrs';
@@ -707,15 +679,14 @@ function renderReports() {
   document.getElementById('r-wa').textContent      = waCount;
   document.getElementById('r-email').textContent   = emCount;
   document.getElementById('r-phone').textContent   = phCount;
+  const inpEl = document.getElementById('r-inperson');
+  if (inpEl) inpEl.textContent = inpCount;
 
-  // Monthly bar chart (last 6 months)
   renderMonthlyChart(subset);
-
-  // Issue type breakdown
   renderIssueChart(subset);
-
-  // Status breakdown
   renderStatusChart(subset);
+  renderContactChart(subset);
+  renderResolutionChart(subset);
 }
 
 function applyPeriodFilter(list, period) {
@@ -802,27 +773,100 @@ function renderIssueChart(subset) {
     : '<p class="chart-empty">No data for this period</p>';
 }
 
+// ── Shared donut-builder (CSS conic-gradient, no external chart library) ────
+function buildDonutHTML(dataArr) {
+  const total = dataArr.reduce((s, d) => s + d.val, 0);
+  if (!total) return '<p class="chart-empty">No data for this period</p>';
+
+  let cumulative = 0;
+  const stops = dataArr
+    .filter(d => d.val > 0)
+    .map(d => {
+      const start = (cumulative / total) * 100;
+      cumulative += d.val;
+      const end = (cumulative / total) * 100;
+      return `${d.color} ${start.toFixed(2)}% ${end.toFixed(2)}%`;
+    }).join(', ');
+
+  const legend = dataArr.map(d => {
+    const pct = total ? Math.round((d.val / total) * 100) : 0;
+    return `
+      <div class="donut-legend-row">
+        <span class="donut-dot" style="background:${d.color}"></span>
+        <span class="donut-legend-label">${d.label}</span>
+        <span class="donut-legend-val">${d.val} <span class="hbar-pct">${pct}%</span></span>
+      </div>`;
+  }).join('');
+
+  return `
+    <div class="donut-flex">
+      <div class="donut-ring" style="background:conic-gradient(${stops})">
+        <div class="donut-hole">${total}</div>
+      </div>
+      <div class="donut-legend">${legend}</div>
+    </div>`;
+}
+
 function renderStatusChart(subset) {
-  const total   = subset.length || 1;
   const statuses = [
     { label: 'New',         key: 'New',         color: '#8B5CF6' },
     { label: 'In Progress', key: 'In Progress',  color: '#3B82F6' },
     { label: 'Resolved',    key: 'Resolved',     color: '#10B981' },
+    { label: 'Redirected',  key: 'Redirected',   color: '#64748B' },
     { label: 'Unresolved',  key: 'Unresolved',   color: '#EF4444' },
   ];
-  document.getElementById('status-chart').innerHTML =
-    statuses.map(s => {
-      const val = subset.filter(t => t.status === s.key).length;
-      const pct = ((val / total) * 100).toFixed(0);
-      return `
-        <div class="hbar-row">
-          <div class="hbar-label">${s.label}</div>
-          <div class="hbar-track">
-            <div class="hbar-fill" style="width:${pct}%;background:${s.color}"></div>
-          </div>
-          <div class="hbar-val">${val} <span class="hbar-pct">${pct}%</span></div>
-        </div>`;
-    }).join('');
+  const dataArr = statuses.map(s => ({
+    label: s.label,
+    color: s.color,
+    val: subset.filter(t => t.status === s.key).length
+  }));
+  document.getElementById('status-chart').innerHTML = buildDonutHTML(dataArr);
+}
+
+function renderContactChart(subset) {
+  const channels = [
+    { label: 'WhatsApp',   key: 'WhatsApp',   color: '#25D366' },
+    { label: 'Email',      key: 'Email',      color: '#3B82F6' },
+    { label: 'Phone call', key: 'Phone call', color: '#F5A52A' },
+    { label: 'In person',  key: 'In person',  color: '#8B5CF6' },
+  ];
+  const dataArr = channels.map(c => ({
+    label: c.label,
+    color: c.color,
+    val: subset.filter(t => t.contactMethod === c.key).length
+  }));
+  const el = document.getElementById('contact-chart');
+  if (el) el.innerHTML = buildDonutHTML(dataArr);
+}
+
+function renderResolutionChart(subset) {
+  const el = document.getElementById('resolution-chart');
+  if (!el) return;
+
+  const resolved = subset.filter(t => t.status === 'Resolved' && typeof t.rtInHours === 'number' && t.rtInHours > 0);
+  const buckets = [
+    { label: 'Under 1 hour',  test: h => h < 1 },
+    { label: '1–4 hours',     test: h => h >= 1 && h < 4 },
+    { label: '4–24 hours',    test: h => h >= 4 && h < 24 },
+    { label: 'Over 24 hours', test: h => h >= 24 },
+  ];
+  const counts = buckets.map(b => resolved.filter(t => b.test(t.rtInHours)).length);
+  const maxVal = Math.max(...counts, 1);
+  const colors = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444'];
+
+  if (!resolved.length) {
+    el.innerHTML = '<p class="chart-empty">No resolved tickets with a recorded time yet</p>';
+    return;
+  }
+
+  el.innerHTML = buckets.map((b, i) => `
+    <div class="hbar-row">
+      <div class="hbar-label">${b.label}</div>
+      <div class="hbar-track">
+        <div class="hbar-fill" style="width:${(counts[i]/maxVal*100).toFixed(0)}%;background:${colors[i]}"></div>
+      </div>
+      <div class="hbar-val">${counts[i]}</div>
+    </div>`).join('');
 }
 
 function updateReportPeriod() { renderReports(); }
