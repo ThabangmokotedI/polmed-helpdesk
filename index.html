@@ -31,9 +31,6 @@
 
       <div id="error-box" class="error-box" style="display:none"></div>
       <div id="success-box" class="success-box" style="display:none"></div>
-      <div id="demo-note" class="demo-note" style="display:none">
-        Demo login available: <strong>thabangmokotedi38@gmail.com</strong> / <strong>P@ssword1</strong>
-      </div>
 
       <!-- LOGIN FORM -->
       <form id="login-form" class="auth-form" autocomplete="off">
@@ -133,11 +130,6 @@
       onAuthStateChanged(auth, (user) => {
         if (user) window.location.href = "dashboard.html";
       });
-
-      const demoNote = document.getElementById('demo-note');
-      if (isConfigPlaceholders && demoNote) {
-        demoNote.style.display = 'block';
-      }
 
       // Login
       document.getElementById("login-form").addEventListener("submit", async (e) => {
