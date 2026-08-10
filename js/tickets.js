@@ -299,12 +299,12 @@ function renderTable(list) {
       ? `<span class="unread-dot" title="New member reply" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#f59e0b;margin-right:6px;vertical-align:middle;box-shadow:0 0 0 2px rgba(245,158,11,0.25)"></span>`
       : '';
     return `<div class="table-row" onclick="viewTicket('${t.id}')">
-      <div class="td"><span class="tid-pill">${unreadDot}${t.ticketId || '—'}</span></div>
-      <div class="td mono">${t.identifier || '—'}</div>
-      <div class="td issue">${t.issueType || '—'}</div>
-      <div class="td desc">${t.description || '—'}</div>
-      <div class="td">${ch} ${t.contactMethod || '—'}</div>
-      <div class="td date">${date}</div>
+      <div class="td"><span class="tid-pill">${unreadDot}${escapeHtml(t.ticketId) || '—'}</span></div>
+      <div class="td mono">${escapeHtml(t.identifier) || '—'}</div>
+      <div class="td issue">${escapeHtml(t.issueType) || '—'}</div>
+      <div class="td desc">${escapeHtml(t.description) || '—'}</div>
+      <div class="td">${ch} ${escapeHtml(t.contactMethod) || '—'}</div>
+      <div class="td date">${escapeHtml(date)}</div>
       <div class="td">${badge}</div>
       <div class="td actions">
         <button class="row-edit-btn" onclick="event.stopPropagation();editTicketById('${t.id}')">
@@ -526,6 +526,20 @@ async function deleteTicket() {
   }
 }
 
+// ── HTML escaping helper ─────────────────────────────────────────────────────
+// Used everywhere member-supplied or webhook-supplied text is inserted into
+// innerHTML, to prevent stored XSS (e.g. a WhatsApp message containing
+// "<img src=x onerror=...>" being rendered as live HTML in an agent's browser).
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // ── Ticket detail view ────────────────────────────────────────────────────────
 function viewTicket(id) {
   const t = tickets.find(x => x.id === id);
@@ -540,22 +554,22 @@ function viewTicket(id) {
   const suggestedReply = `Thank you for contacting the Polmed Connect Helpdesk. Your ticket reference is ${t.ticketId}. We will follow up with you shortly.`;
   document.getElementById('detail-body').innerHTML = `
     <div class="detail-grid">
-      <div class="detail-item"><label>Contact Method</label><span>${t.contactMethod || '—'}</span></div>
-      <div class="detail-item"><label>Member Identifier</label><span>${t.identifier || '—'}</span></div>
-      <div class="detail-item"><label>Issue Type</label><span>${t.issueType || '—'}</span></div>
+      <div class="detail-item"><label>Contact Method</label><span>${escapeHtml(t.contactMethod) || '—'}</span></div>
+      <div class="detail-item"><label>Member Identifier</label><span>${escapeHtml(t.identifier) || '—'}</span></div>
+      <div class="detail-item"><label>Issue Type</label><span>${escapeHtml(t.issueType) || '—'}</span></div>
       <div class="detail-item"><label>Status</label><span>${statusBadge(t.status)}</span></div>
-      <div class="detail-item"><label>Date Received</label><span>${t.dateReceived || '—'}</span></div>
-      <div class="detail-item"><label>Time Received</label><span>${t.timeReceived || '—'}</span></div>
+      <div class="detail-item"><label>Date Received</label><span>${escapeHtml(t.dateReceived) || '—'}</span></div>
+      <div class="detail-item"><label>Time Received</label><span>${escapeHtml(t.timeReceived) || '—'}</span></div>
       <div class="detail-item"><label>Source</label><span>${sourceLabel}</span></div>
-      <div class="detail-item"><label>Time to First Response</label><span>${t.timeToFirstResponse || '—'}</span></div>
-      <div class="detail-item"><label>Resolution Time</label><span>${t.resolutionTime || '—'}</span></div>
+      <div class="detail-item"><label>Time to First Response</label><span>${escapeHtml(t.timeToFirstResponse) || '—'}</span></div>
+      <div class="detail-item"><label>Resolution Time</label><span>${escapeHtml(t.resolutionTime) || '—'}</span></div>
       <div class="detail-item"><label>RT (hours)</label><span>${t.rtInHours ?? '—'}</span></div>
-      <div class="detail-item"><label>Logged by</label><span>${t.createdBy || '—'}</span></div>
-      <div class="detail-item"><label>Last updated by</label><span>${t.updatedBy || '—'}</span></div>
+      <div class="detail-item"><label>Logged by</label><span>${escapeHtml(t.createdBy) || '—'}</span></div>
+      <div class="detail-item"><label>Last updated by</label><span>${escapeHtml(t.updatedBy) || '—'}</span></div>
     </div>
     <div class="detail-section">
       <div class="detail-section-label">Original message</div>
-      <div class="detail-block">${t.message || '—'}</div>
+      <div class="detail-block">${escapeHtml(t.message) || '—'}</div>
     </div>
     ${t.mediaUrl ? `
     <div class="detail-section">
@@ -569,9 +583,9 @@ function viewTicket(id) {
     </div>` : ''}
     <div class="detail-section">
       <div class="detail-section-label">Description</div>
-      <div class="detail-block">${t.description || '—'}</div>
+      <div class="detail-block">${escapeHtml(t.description) || '—'}</div>
     </div>
-    ${t.resolutionDescription ? `<div class="detail-section"><div class="detail-section-label">Resolution Notes</div><div class="detail-block">${t.resolutionDescription}</div></div>` : ''}
+    ${t.resolutionDescription ? `<div class="detail-section"><div class="detail-section-label">Resolution Notes</div><div class="detail-block">${escapeHtml(t.resolutionDescription)}</div></div>` : ''}
     ${canReplyByWhatsApp ? `
     <div class="detail-section">
       <div class="detail-section-label">Reply to member (WhatsApp)</div>
@@ -579,7 +593,7 @@ function viewTicket(id) {
       <select id="quick-reply-select" style="width:100%;margin-bottom:8px;padding:7px;border-radius:8px;border:1px solid #ddd;font:inherit;background:#fafafa"></select>
       <textarea id="detail-reply-text" rows="3"
         style="width:100%;box-sizing:border-box;padding:8px;border-radius:8px;border:1px solid #ddd;font:inherit;resize:vertical"
-      >${suggestedReply}</textarea>
+      >${escapeHtml(suggestedReply)}</textarea>
     </div>` : ''}
   `;
   document.getElementById('copy-reply-btn').style.display = t.ticketId ? 'inline-flex' : 'none';
@@ -602,16 +616,17 @@ function viewTicket(id) {
 function renderMediaHTML(url, type, size) {
   if (!url) return '';
   const maxW = size === 'small' ? '200px' : '100%';
+  const safeUrl = escapeHtml(url);
   if (type === 'image' || type === 'sticker') {
-    return `<img src="${url}" alt="Attachment" style="max-width:${maxW};border-radius:8px;border:1px solid #ddd;display:block;margin-top:6px">`;
+    return `<img src="${safeUrl}" alt="Attachment" style="max-width:${maxW};border-radius:8px;border:1px solid #ddd;display:block;margin-top:6px">`;
   }
   if (type === 'video') {
-    return `<video src="${url}" controls preload="metadata" style="max-width:${maxW};border-radius:8px;border:1px solid #ddd;display:block;margin-top:6px"></video>`;
+    return `<video src="${safeUrl}" controls preload="metadata" style="max-width:${maxW};border-radius:8px;border:1px solid #ddd;display:block;margin-top:6px"></video>`;
   }
   if (type === 'audio' || type === 'voice' || type === 'ptt') {
-    return `<audio src="${url}" controls preload="metadata" style="width:${size === 'small' ? '220px' : '100%'};display:block;margin-top:6px"></audio>`;
+    return `<audio src="${safeUrl}" controls preload="metadata" style="width:${size === 'small' ? '220px' : '100%'};display:block;margin-top:6px"></audio>`;
   }
-  return `<a href="${url}" target="_blank" rel="noopener" class="btn btn-sm" style="margin-top:6px;display:inline-block">Open ${type || 'file'}</a>`;
+  return `<a href="${safeUrl}" target="_blank" rel="noopener" class="btn btn-sm" style="margin-top:6px;display:inline-block">Open ${escapeHtml(type) || 'file'}</a>`;
 }
 
 // ── Conversation thread (WhatsApp back-and-forth) ───────────────────────────
@@ -634,8 +649,8 @@ function renderConversation(id) {
     const mediaHtml = renderMediaHTML(entry.mediaUrl, entry.mediaType, 'small');
     return `
       <div class="convo-bubble ${isAgent ? 'convo-agent' : 'convo-member'}">
-        <div class="convo-meta">${isAgent ? 'You (agent)' : 'Member'} · ${when}</div>
-        <div class="convo-text">${(entry.text || '').replace(/</g, '&lt;')}</div>
+        <div class="convo-meta">${isAgent ? 'You (agent)' : 'Member'} · ${escapeHtml(when)}</div>
+        <div class="convo-text">${escapeHtml(entry.text)}</div>
         ${mediaHtml}
       </div>
     `;
@@ -696,7 +711,7 @@ function renderTypingBanner(ticketId) {
     .map(([, info]) => info.email.split('@')[0]);
   if (others.length) {
     el.style.display = 'flex';
-    el.innerHTML = `✏️ <strong>${others.join(', ')}</strong> ${others.length > 1 ? 'are' : 'is'} already replying to this member right now — check before you send.`;
+    el.innerHTML = `✏️ <strong>${escapeHtml(others.join(', '))}</strong> ${others.length > 1 ? 'are' : 'is'} already replying to this member right now — check before you send.`;
   } else {
     el.style.display = 'none';
     el.innerHTML = '';
@@ -735,6 +750,10 @@ window.copyReply = function () {
     .catch(() => alert('Copy failed. Please try again.'));
 };
 
+// SECURITY FIX (priority #1): the WhatsApp reply function now requires a
+// Firebase ID token proving the caller is a logged-in Polmed agent. Without
+// this, anyone who found the Netlify function URL could send arbitrary
+// WhatsApp messages from Polmed's business number to any phone number.
 window.sendWhatsAppReply = async function () {
   const t = tickets.find(x => x.id === editingId);
   if (!t || !t.phoneNumber) return;
@@ -747,9 +766,14 @@ window.sendWhatsAppReply = async function () {
   btn.disabled    = true;
   btn.textContent = 'Sending…';
   try {
+    if (!currentUser) throw new Error('You are not signed in. Please refresh and log in again.');
+    const idToken = await currentUser.getIdToken();
     const res = await fetch('/.netlify/functions/send-whatsapp-reply', {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`
+      },
       body: JSON.stringify({
         ticketId:    t.ticketId,
         phoneNumber: t.phoneNumber,
@@ -758,7 +782,11 @@ window.sendWhatsAppReply = async function () {
     });
     const result = await res.json();
     if (!res.ok || !result.ok) {
-      throw new Error(result?.error?.error?.message || 'Send failed. Note: WhatsApp only allows free-form replies within 24 hours of the member\'s last message — after that, only a pre-approved template can be sent.');
+      throw new Error(
+        result?.error?.error?.message ||
+        (typeof result?.error === 'string' ? result.error : null) ||
+        'Send failed. Note: WhatsApp only allows free-form replies within 24 hours of the member\'s last message — after that, only a pre-approved template can be sent.'
+      );
     }
     alert('Reply sent to the member on WhatsApp.');
     // Bump the ticket's activity time immediately so it re-sorts to the top
@@ -782,7 +810,7 @@ async function signOut() {
 // ── Badges / icons ────────────────────────────────────────────────────────────
 function statusBadge(s) {
   const map = { 'New': 'new', 'Resolved': 'res', 'In Progress': 'prog', 'Unresolved': 'unres', 'Redirected': 'redir' };
-  return `<span class="badge ${map[s] || ''}">${s || '—'}</span>`;
+  return `<span class="badge ${map[s] || ''}">${escapeHtml(s) || '—'}</span>`;
 }
 function contactIcon(c) {
   if (c === 'WhatsApp') {
@@ -893,7 +921,7 @@ function renderMonthlyChart(subset) {
         <div class="vbar-wrap">
           <div class="vbar-fill" style="height:${(m.count / maxVal * 100).toFixed(0)}%"></div>
         </div>
-        <div class="vbar-label">${m.label}</div>
+        <div class="vbar-label">${escapeHtml(m.label)}</div>
       </div>`).join('')}
     </div>`;
 }
@@ -910,7 +938,7 @@ function renderIssueChart(subset) {
   document.getElementById('issue-chart').innerHTML =
     sorted.length ? sorted.map(([label, val], i) => `
       <div class="hbar-row">
-        <div class="hbar-label" title="${label}">${label}</div>
+        <div class="hbar-label" title="${escapeHtml(label)}">${escapeHtml(label)}</div>
         <div class="hbar-track">
           <div class="hbar-fill" style="width:${(val/maxVal*100).toFixed(0)}%;background:${colors[i % colors.length]}"></div>
         </div>
@@ -939,7 +967,7 @@ function buildDonutHTML(dataArr) {
     return `
       <div class="donut-legend-row">
         <span class="donut-dot" style="background:${d.color}"></span>
-        <span class="donut-legend-label">${d.label}</span>
+        <span class="donut-legend-label">${escapeHtml(d.label)}</span>
         <span class="donut-legend-val">${d.val} <span class="hbar-pct">${pct}%</span></span>
       </div>`;
   }).join('');
@@ -1007,7 +1035,7 @@ function renderResolutionChart(subset) {
 
   el.innerHTML = buckets.map((b, i) => `
     <div class="hbar-row">
-      <div class="hbar-label">${b.label}</div>
+      <div class="hbar-label">${escapeHtml(b.label)}</div>
       <div class="hbar-track">
         <div class="hbar-fill" style="width:${(counts[i]/maxVal*100).toFixed(0)}%;background:${colors[i]}"></div>
       </div>
