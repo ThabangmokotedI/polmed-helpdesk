@@ -6,10 +6,18 @@
 // the new message is appended to that ticket's conversation thread instead of
 // creating a brand new ticket. This stops a normal back-and-forth WhatsApp
 // conversation from spawning a fresh ticket for every message.
+//
+// SECURITY FIX (priority #2): every inbound POST is now verified against
+// Meta's X-Hub-Signature-256 header before anything else happens. Without
+// this, anyone who found this Netlify URL could POST a fake, Meta-shaped
+// payload and create real tickets / inject fake "member" messages into
+// open tickets, indistinguishable from genuine WhatsApp traffic.
 
-const admin = require('firebase-admin');
+const admin   = require('firebase-admin');
+const crypto  = require('crypto');
 
 const verifyToken  = process.env.WHATSAPP_VERIFY_TOKEN;
+const appSecret    = process.env.META_APP_SECRET;          // ← NEW: used to verify POST signatures
 const projectId    = process.env.FIREBASE_PROJECT_ID;
 const accessToken  = process.env.WHATSAPP_ACCESS_TOKEN; // same permanent token used for sending
 const graphVersion = 'v21.0';
@@ -34,6 +42,33 @@ if (!admin.apps.length) {
       console.error('Firebase Admin init error:', err.message);
     }
   }
+}
+
+// ── Webhook signature verification ───────────────────────────────────────────
+// Meta signs every POST body with your App Secret. We recompute the same
+// HMAC-SHA256 over the exact raw body we received and compare it to the
+// x-hub-signature-256 header using a timing-safe comparison (a plain ===
+// or string comparison would leak timing information an attacker could use
+// to guess the correct signature one byte at a time).
+function isValidSignature(rawBody, signatureHeader) {
+  if (!appSecret) {
+    console.error('META_APP_SECRET not set — rejecting webhook POST (cannot verify signature)');
+    return false;
+  }
+  if (!signatureHeader || !signatureHeader.startsWith('sha256=')) {
+    return false;
+  }
+  const expectedSignature =
+    'sha256=' + crypto.createHmac('sha256', appSecret).update(rawBody, 'utf8').digest('hex');
+
+  const receivedBuffer = Buffer.from(signatureHeader);
+  const expectedBuffer = Buffer.from(expectedSignature);
+
+  // Buffers must be equal length for timingSafeEqual — different lengths
+  // means it's already invalid, and comparing would throw.
+  if (receivedBuffer.length !== expectedBuffer.length) return false;
+
+  return crypto.timingSafeEqual(receivedBuffer, expectedBuffer);
 }
 
 // ── Media handling ────────────────────────────────────────────────────────────
@@ -81,9 +116,24 @@ exports.handler = async function (event) {
     return { statusCode: 405, body: 'Method not allowed' };
   }
 
+  // ── Verify this POST really came from Meta before touching anything else ───
+  // Netlify may base64-encode the body depending on how the request came in,
+  // so we normalise to the exact raw text Meta signed before hashing it.
+  const rawBody = event.isBase64Encoded
+    ? Buffer.from(event.body || '', 'base64').toString('utf8')
+    : (event.body || '');
+
+  const signatureHeader =
+    event.headers?.['x-hub-signature-256'] || event.headers?.['X-Hub-Signature-256'];
+
+  if (!isValidSignature(rawBody, signatureHeader)) {
+    console.error('Rejected webhook POST — missing or invalid X-Hub-Signature-256');
+    return { statusCode: 401, body: 'Invalid signature' };
+  }
+
   let body;
   try {
-    body = JSON.parse(event.body);
+    body = JSON.parse(rawBody);
   } catch {
     return { statusCode: 400, body: 'Invalid JSON' };
   }
