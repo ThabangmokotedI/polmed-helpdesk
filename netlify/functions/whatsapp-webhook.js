@@ -161,8 +161,10 @@ async function fetchAndStoreMedia(mediaId, mimeType, ticketId) {
   const file     = bucket.file(filePath);
   await file.save(buffer, { metadata: { contentType: mimeType || metaJson.mime_type } });
 
-  const [url] = await file.getSignedUrl({ action: 'read', expires: '01-01-2100' });
-  return url;
+  // PRIORITY FIX #3: no signed URL generated here anymore. Only the storage
+  // path is returned. The dashboard requests a short-lived signed URL on
+  // demand, each time an agent actually opens the ticket, via get-media-url.js.
+  return filePath;
 }
 
 exports.handler = async function (event) {
@@ -207,7 +209,7 @@ exports.handler = async function (event) {
   const now    = new Date();
 
   let text     = message?.text?.body || '';
-  let mediaUrl = null;
+  let mediaPath = null;
   let mediaType = null;
 
   const ds = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
@@ -219,7 +221,7 @@ exports.handler = async function (event) {
     mediaType = message.type;
     text      = mediaObj?.caption || `[${message.type} attached]`;
     try {
-      mediaUrl = await fetchAndStoreMedia(mediaObj.id, mediaObj.mime_type, tempIdForMedia);
+      mediaPath = await fetchAndStoreMedia(mediaObj.id, mediaObj.mime_type, tempIdForMedia);
     } catch (err) {
       console.error('Media fetch/store failed:', err.message);
       text = `[${message.type} attached — could not be retrieved, ask member to resend]`;
@@ -256,7 +258,7 @@ exports.handler = async function (event) {
       const newEntry = {
         from: 'member',
         text,
-        mediaUrl,
+        mediaPath,
         mediaType,
         at: now.toISOString()
       };
@@ -277,18 +279,18 @@ exports.handler = async function (event) {
 
     const ticketId = `TKT-${ds}-WA-${ts}`;
 
-    let finalMediaUrl = mediaUrl;
-    if (mediaUrl) {
+    let finalMediaPath = mediaPath;
+    if (mediaPath) {
       try {
         const bucket = admin.storage().bucket();
-        const ext = mediaUrl.split('.').pop().split('?')[0];
+        const ext = mediaPath.split('.').pop();
         const oldFile = bucket.file(`whatsapp-media/${tempIdForMedia}.${ext}`);
         const newFile = bucket.file(`whatsapp-media/${ticketId}.${ext}`);
         await oldFile.move(newFile);
-        const [url] = await newFile.getSignedUrl({ action: 'read', expires: '01-01-2100' });
-        finalMediaUrl = url;
+        finalMediaPath = `whatsapp-media/${ticketId}.${ext}`;
       } catch (err) {
         console.error('Could not rename media file to final ticket ID:', err.message);
+        // fall back to the temp path — not fatal
       }
     }
 
@@ -298,12 +300,12 @@ exports.handler = async function (event) {
       source:        'whatsapp-webhook',
       status:        'New',
       message:       text,
-      mediaUrl:      finalMediaUrl,
+      mediaPath:     finalMediaPath,
       mediaType,
       phoneNumber:   sender,
       description:   '',
       issueType:     '',
-      conversation:  [{ from: 'member', text, mediaUrl: finalMediaUrl, mediaType, at: now.toISOString() }],
+      conversation:  [{ from: 'member', text, mediaPath: finalMediaPath, mediaType, at: now.toISOString() }],
       dateReceived:  now.toISOString().split('T')[0],
       timeReceived:  now.toTimeString().split(' ')[0],
       createdBy:     'WhatsApp webhook',

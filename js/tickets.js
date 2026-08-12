@@ -598,10 +598,10 @@ function viewTicket(id) {
       <div class="detail-section-label">Original message</div>
       <div class="detail-block">${escapeHtml(t.message) || '—'}</div>
     </div>
-    ${t.mediaUrl ? `
+    ${t.mediaPath ? `
     <div class="detail-section">
       <div class="detail-section-label">Attachment</div>
-      ${renderMediaHTML(t.mediaUrl, t.mediaType, 'large')}
+      ${renderMediaHTML(t.mediaPath, t.mediaType, 'large')}
     </div>` : ''}
     ${canReplyByWhatsApp ? `
     <div class="detail-section">
@@ -643,20 +643,67 @@ function viewTicket(id) {
 }
 
 // ── Media rendering (images, video, voice notes, other files) ───────────────
-function renderMediaHTML(url, type, size) {
-  if (!url) return '';
+// PRIORITY FIX #3: media is no longer referenced by a permanent URL. Each
+// ticket/conversation entry now stores a mediaPath (a location in Firebase
+// Storage) instead of a URL. We resolve that into a short-lived signed URL
+// on demand, only when an agent actually views the ticket, via
+// get-media-url.js — so member photos/voice notes aren't reachable forever
+// by anyone who has an old link.
+let mediaPathCache = {}; // path -> { url, expiresAt }
+let mediaElCounter = 0;
+
+async function resolveMediaUrl(path) {
+  const cached = mediaPathCache[path];
+  if (cached && cached.expiresAt > Date.now() + 60000) return cached.url;
+  if (!currentUser) return null;
+  try {
+    const idToken = await currentUser.getIdToken();
+    const res = await fetch('/.netlify/functions/get-media-url', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`
+      },
+      body: JSON.stringify({ path })
+    });
+    const result = await res.json();
+    if (!res.ok || !result.ok) throw new Error(result?.error || 'Could not load attachment');
+    mediaPathCache[path] = { url: result.url, expiresAt: Date.now() + (result.expiresInMs || 2 * 60 * 60 * 1000) };
+    return result.url;
+  } catch (err) {
+    console.error('resolveMediaUrl failed:', err.message);
+    return null;
+  }
+}
+
+function renderMediaTagHTML(url, type, size) {
   const maxW = size === 'small' ? '200px' : '100%';
   const safeUrl = escapeHtml(url);
   if (type === 'image' || type === 'sticker') {
-    return `<img src="${safeUrl}" alt="Attachment" style="max-width:${maxW};border-radius:8px;border:1px solid #ddd;display:block;margin-top:6px">`;
+    return `<img src="${safeUrl}" alt="Attachment" style="max-width:${maxW};border-radius:8px;border:1px solid #ddd;display:block">`;
   }
   if (type === 'video') {
-    return `<video src="${safeUrl}" controls preload="metadata" style="max-width:${maxW};border-radius:8px;border:1px solid #ddd;display:block;margin-top:6px"></video>`;
+    return `<video src="${safeUrl}" controls preload="metadata" style="max-width:${maxW};border-radius:8px;border:1px solid #ddd;display:block"></video>`;
   }
   if (type === 'audio' || type === 'voice' || type === 'ptt') {
-    return `<audio src="${safeUrl}" controls preload="metadata" style="width:${size === 'small' ? '220px' : '100%'};display:block;margin-top:6px"></audio>`;
+    return `<audio src="${safeUrl}" controls preload="metadata" style="width:${size === 'small' ? '220px' : '100%'};display:block"></audio>`;
   }
-  return `<a href="${safeUrl}" target="_blank" rel="noopener" class="btn btn-sm" style="margin-top:6px;display:inline-block">Open ${escapeHtml(type) || 'file'}</a>`;
+  return `<a href="${safeUrl}" target="_blank" rel="noopener" class="btn btn-sm" style="display:inline-block">Open ${escapeHtml(type) || 'file'}</a>`;
+}
+
+function renderMediaHTML(mediaPath, type, size) {
+  if (!mediaPath) return '';
+  const elId = `media-${mediaElCounter++}`;
+  resolveMediaUrl(mediaPath).then(url => {
+    const el = document.getElementById(elId);
+    if (!el) return; // ticket modal was closed before this resolved — nothing to update
+    if (!url) {
+      el.innerHTML = `<div style="color:#c0392b;font-size:12px;margin-top:4px">Could not load attachment</div>`;
+      return;
+    }
+    el.innerHTML = renderMediaTagHTML(url, type, size);
+  });
+  return `<div id="${elId}" style="margin-top:6px;color:#888;font-size:12px">Loading attachment…</div>`;
 }
 
 // ── Conversation thread (WhatsApp back-and-forth) ───────────────────────────
@@ -676,7 +723,7 @@ function renderConversation(id) {
   el.innerHTML = sorted.map(entry => {
     const isAgent = entry.from === 'agent';
     const when = entry.at ? new Date(entry.at).toLocaleString() : '';
-    const mediaHtml = renderMediaHTML(entry.mediaUrl, entry.mediaType, 'small');
+    const mediaHtml = renderMediaHTML(entry.mediaPath, entry.mediaType, 'small');
     return `
       <div class="convo-bubble ${isAgent ? 'convo-agent' : 'convo-member'}">
         <div class="convo-meta">${isAgent ? 'You (agent)' : 'Member'} · ${escapeHtml(when)}</div>
