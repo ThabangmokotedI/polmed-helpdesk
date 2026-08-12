@@ -1,7 +1,7 @@
 # SOFTWARE REQUIREMENTS SPECIFICATION (SRS)
 ## Polmed Connect — Helpdesk Ticket Tracker
-**Version:** 1.0  
-**Date:** May 2026  
+**Version:** 1.1  
+**Date:** 2026-08-11  
 **Author:** Polmed Connect Helpdesk Team  
 **Classification:** Internal — Restricted
 
@@ -10,53 +10,57 @@
 ## 1. Introduction
 
 ### 1.1 Purpose
-This document defines the software requirements for the Polmed Connect Helpdesk Ticket Tracker — a web-based system for logging, tracking, and resolving WhatsApp-based technical support queries related to the Polmed Connect mobile application.
+This document describes the current requirements, implemented capabilities, and operating model for the Polmed Connect Helpdesk Ticket Tracker.
 
 ### 1.2 Scope
-The system allows authorised helpdesk agents to:
-- Log member support queries received via WhatsApp, Email, or Phone call
-- Generate unique ticket IDs to link WhatsApp conversations to records
-- Track ticket status in real-time across multiple agents simultaneously
-- View and update all tickets without duplication or data loss
-- Comply with POPIA (Protection of Personal Information Act, 2013)
+The system is a browser-based helpdesk tracker for Polmed Connect support agents. It supports:
+- WhatsApp ticket ingestion via Meta webhook
+- Email ticket ingestion via Mailgun inbound routes
+- Real-time Firestore ticket sync and dashboard updates
+- Agent authentication, ticket triage, and ticket lifecycle management
+- Supervisor role control for ticket deletion and role governance
 
 ### 1.3 Intended Audience
-- Helpdesk agents handling Polmed Connect app support queries
-- Polmed internal IT / systems team (for integration planning)
-- Any developer building on or extending this system
+- Polmed helpdesk agents using the tracker
+- Operations and support managers overseeing ticket workflow
+- Developers maintaining or extending the helpdesk system
 
 ### 1.4 Definitions
 
 | Term | Definition |
 |---|---|
-| Ticket | A logged record of one member's support query |
-| Agent | An authorised Polmed helpdesk team member |
-| TID | Ticket ID — unique identifier in format TKT-YYYYMMDD-NNN |
+| Ticket | A logged record of one member support interaction |
+| Agent | Authenticated Polmed support staff member |
+| Supervisor | Agent with elevated privileges (delete tickets, manage roles) |
+| Ticket ID | Unique tracker identifier, e.g. `TKT-20260811-WA-123456` |
 | POPIA | Protection of Personal Information Act (South Africa, 2013) |
-| Firestore | Google Firebase's real-time NoSQL cloud database |
-| WhatsApp label | A category label applied to a WhatsApp chat (In Progress, Resolved, etc.) |
+| Firestore | Google Firebase cloud database service |
+| WhatsApp webhook | Netlify serverless function that receives Meta cloud messages |
+| Email webhook | Netlify serverless function that receives Mailgun inbound emails |
 
 ---
 
 ## 2. Overall Description
 
 ### 2.1 System Context
-Members experiencing difficulties with the Polmed Connect app contact the helpdesk via a dedicated WhatsApp Business number, email, or phone. Agents receive these queries, log them as tickets, assist the member, and update the ticket status through to resolution.
+Support members contact Polmed Connect through WhatsApp or email. Incoming messages are auto-logged as tickets and surfaced to authenticated helpdesk agents in a centralized web dashboard.
 
-### 2.2 Current Problem
-The current process uses a shared Excel spreadsheet with the following documented issues:
-- No unique ticket identifier → agents cannot match WhatsApp chats to spreadsheet rows
-- Duplicate entries created when multiple agents log the same query
-- Status update confusion when following up on "In Progress" items
-- No access control → anyone with the link can view sensitive member data
-- No audit trail of who changed what and when
+### 2.2 Project Status
+The implementation is complete for the core ticketing workflow:
+- Login page and password reset
+- Ticket dashboard with status/issue/contact filters
+- Real-time syncing from Firestore
+- WhatsApp webhook for incoming messages and media
+- Email webhook for Mailgun inbound email
+- Supervisor-only ticket deletion in Firestore rules
+- Agent role auto-creation on first login
 
-### 2.3 Proposed Solution
-A web-based ticket tracker built with:
-- **Frontend:** HTML, CSS, JavaScript (no framework required, runs in any browser)
-- **Backend / Database:** Google Firebase (Firestore for real-time data, Authentication for login)
-- **Hosting:** Netlify (free tier) or any static web host
-- **Access:** Login-protected with individual agent email accounts
+### 2.3 Key Benefits
+- Unique ticket tracking for WhatsApp and email queries
+- Reduced duplicate logging through existing ticket threading
+- Real-time visibility for multiple agents
+- Secure, authenticated access with audit metadata
+- POPIA-aware handling of member data and access control
 
 ---
 
@@ -65,38 +69,37 @@ A web-based ticket tracker built with:
 ### FR-01: User Authentication
 | # | Requirement |
 |---|---|
-| FR-01.1 | The system shall require agents to log in with an email address and password |
-| FR-01.2 | The system shall redirect unauthenticated users to the login page |
-| FR-01.3 | The system shall provide a "Forgot Password" function that sends a reset email |
-| FR-01.4 | Each agent shall have an individual login — shared accounts are not permitted |
-| FR-01.5 | The system shall record the logged-in agent's email on every ticket action |
+| FR-01.1 | Agents must sign in with Firebase Email/Password |
+| FR-01.2 | Unauthenticated users are redirected to `index.html` |
+| FR-01.3 | Password reset email is supported from the login page |
+| FR-01.4 | Each agent uses an individual authenticated account |
+| FR-01.5 | Ticket actions store the agent email or webhook source |
 
-### FR-02: Ticket Creation
+### FR-02: Ticket Ingestion
 | # | Requirement |
 |---|---|
-| FR-02.1 | Any authenticated agent may create a new ticket |
-| FR-02.2 | The system shall auto-generate a unique Ticket ID in format TKT-YYYYMMDD-NNN |
-| FR-02.3 | Required fields: Contact Method, Issue Type, Description, Date Received |
-| FR-02.4 | Optional fields: Member Identifier (number), Time Received, Time to First Response, Resolution Time, RT in Hours, Resolution Description |
-| FR-02.5 | The system shall record the creating agent's email and timestamp |
+| FR-02.1 | WhatsApp messages create or append tickets automatically |
+| FR-02.2 | Email messages create tickets automatically from Mailgun |
+| FR-02.3 | Incoming tickets default to `New` status |
+| FR-02.4 | WhatsApp thread updates use existing open tickets when possible |
+| FR-02.5 | Incoming media is downloaded and stored in Firebase Storage |
 
-### FR-03: Ticket Fields (matching existing spreadsheet exactly)
+### FR-03: Ticket Fields and Form
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| Ticket ID | Auto-generated | — | TKT-YYYYMMDD-NNN |
-| Contact Method | Dropdown | Yes | WhatsApp / Email / Phone call |
-| Identifier (Member No.) | Text | No | Member's Polmed number |
-| Issue Type | Dropdown | Yes | See section 3.6 |
-| Description | Textarea | Yes | Full description of query |
-| Date Received | Date | Yes | |
-| Time Received | Time | No | |
-| Time to First Response | Text | No | e.g. "17 minutes" |
-| Status | Dropdown | Yes | In Progress / Resolved / Unresolved |
-| Resolution Time | Text | No | e.g. "2 hours" |
-| RT (in hours) | Number | No | Numeric value for stats |
-| Resolution Description | Textarea | No | Required when status = Resolved |
+| Ticket ID | Auto-generated | Yes | `TKT-YYYYMMDD-WA-XXXXXX`, `TKT-YYYYMMDD-EM-XXXXXX`, or admin-generated ticket ID |
+| Contact Method | Dropdown | Yes | WhatsApp / Email / Phone call / In person |
+| Identifier (Member No.) | Text | No | Member number for ticket matching |
+| Issue Type | Dropdown | No | Several issue categories supported |
+| Description | Textarea | No | Initial request or summary |
+| Date Received | Date | Yes | Ticket received date |
+| Time Received | Time | No | Time of incoming request |
+| Status | Dropdown | Yes | New / In Progress / Resolved / Unresolved / Redirected |
+| Resolution Description | Textarea | No | Required for resolved or closed tickets |
+| `fromEmail` / `phoneNumber` | String | No | Stored internally for webhook ticket provenance |
 
 ### FR-04: Issue Type Values
+The UI currently supports these issue types:
 - Onboarding assistance
 - Login Issue
 - Forgot username/password
@@ -104,73 +107,72 @@ A web-based ticket tracker built with:
 - Wellness tracker
 - Feature malfunction
 - Huawei user
+- Not App Related
 - Unspecified / No Response
 
 ### FR-05: Ticket Management
 | # | Requirement |
 |---|---|
-| FR-05.1 | Agents may view all tickets regardless of who created them |
-| FR-05.2 | Agents may edit any ticket field |
-| FR-05.3 | Agents may delete tickets (with confirmation prompt) |
-| FR-05.4 | The system shall record the updating agent's email and timestamp on every edit |
+| FR-05.1 | Agents may view all tickets in the dashboard |
+| FR-05.2 | Agents may update ticket fields and issue type |
+| FR-05.3 | Supervisors may delete tickets via Firestore rules |
+| FR-05.4 | Every update stores `updatedBy` and `updatedAt` metadata |
 
 ### FR-06: Real-Time Sync
 | # | Requirement |
 |---|---|
-| FR-06.1 | All ticket changes shall sync across all logged-in agents in real-time |
-| FR-06.2 | No page refresh shall be required to see another agent's updates |
-| FR-06.3 | The dashboard shall display a live indicator when connected |
+| FR-06.1 | Ticket changes appear in all agents' dashboards in real time |
+| FR-06.2 | The dashboard updates without a page refresh |
+| FR-06.3 | New ticket and unread reply indicators appear automatically |
 
 ### FR-07: Filtering & Search
 | # | Requirement |
 |---|---|
-| FR-07.1 | Agents may search by Ticket ID, Member Identifier, Issue Type, or Description |
-| FR-07.2 | Agents may filter by Status (All / Resolved / In Progress / Unresolved) |
-| FR-07.3 | Agents may filter by Contact Method (All / WhatsApp / Email / Phone call) |
-| FR-07.4 | Agents may filter by Issue Type |
+| FR-07.1 | Search supports Ticket ID, member number, issue type, and description |
+| FR-07.2 | Filter by status, contact method, and issue type |
+| FR-07.3 | Dashboard supports status values `New`, `In Progress`, `Resolved`, `Redirected`, `Unresolved` |
 
 ### FR-08: Dashboard Statistics
 | # | Requirement |
 |---|---|
-| FR-08.1 | The dashboard shall display: Total tickets, In Progress, Resolved, Unresolved, WhatsApp count, Email count |
-| FR-08.2 | Stats shall update automatically when tickets are added or modified |
+| FR-08.1 | Dashboard displays totals for tickets, In Progress, Resolved, Unresolved, WhatsApp, Email |
+| FR-08.2 | Statistics refresh automatically with Firestore updates |
 
-### FR-09: WhatsApp Linking Guide
+### FR-09: WhatsApp and Email Workflow Guidance
 | # | Requirement |
 |---|---|
-| FR-09.1 | The system shall include a built-in guide explaining how to link WhatsApp chats to ticket IDs |
-| FR-09.2 | The guide shall include WhatsApp label → ticket status mapping |
-| FR-09.3 | The guide shall include POPIA compliance rules for agents |
+| FR-09.1 | The app includes a help section for WhatsApp ticket workflow |
+| FR-09.2 | The app documents WhatsApp threading and ticket status mapping |
+| FR-09.3 | The app clarifies POPIA expectations for agents |
 
 ---
 
 ## 4. Non-Functional Requirements
 
 ### NFR-01: Security
-- Authentication enforced on all pages — no unauthenticated access to ticket data
-- Firestore security rules ensure only authenticated users can read/write tickets
-- Optional: restrict access to @polmed.co.za email domain only
+- Only authenticated users may read or write tickets.
+- Only supervisors may delete tickets in `docs/firestore.rules`.
+- Agent role records are stored in `agents/{uid}` and default to `agent`.
+- Incoming webhook requests are verified by signature when configured.
 
 ### NFR-02: POPIA Compliance
-- Member phone numbers shall NOT be stored — the Member Identifier field uses the Polmed membership number only
-- All data is stored in Google Firebase (data centres selectable — EU recommended for POPIA alignment)
-- Access is restricted to named, authenticated individuals
-- Audit trail: every record captures createdBy, createdAt, updatedBy, updatedAt
-- Data retention policy: records older than 12 months must be archived or deleted
-- No data is shared with external parties through this system
+- Phone numbers are stored only for internal webhook correlation and not exposed in UI.
+- Member identifiers are stored as member numbers rather than contact numbers.
+- Agent audit metadata is captured on all ticket updates.
+- Firestore rules prevent public access to ticket documents.
 
 ### NFR-03: Performance
-- Ticket list shall load within 3 seconds on a standard broadband connection
-- Real-time updates shall appear within 2 seconds of a change being saved
+- Ticket data loads quickly from Firestore and renders immediately.
+- Real-time updates are reflected as snapshot events arrive.
 
 ### NFR-04: Usability
-- The system shall be usable on desktop browsers (Chrome, Edge, Firefox)
-- The system shall be responsive and functional on mobile devices
-- No installation or software download required — runs entirely in a browser
+- The interface is browser-based and responsive for desktop use.
+- A local mock mode exists when Firebase config is absent.
+- Authentication, search, and filtering are available from the dashboard.
 
 ### NFR-05: Availability
-- Target uptime: 99.5% (Netlify + Firebase SLA)
-- Offline: if Firebase is unreachable, the system shows a connection error; no data loss occurs
+- Hosting is configured for Netlify with `netlify/functions`.
+- If Firebase is unreachable, the app should display a connection problem.
 
 ---
 
@@ -181,17 +183,22 @@ A web-based ticket tracker built with:
       |
       | HTTPS
       ↓
-[Netlify CDN] ─── HTML / CSS / JS files (static)
+[Netlify CDN] ─── Static files: index.html, dashboard.html, CSS, JS
       |
-      | Firebase SDK (JS module)
+      | Netlify Functions
       ↓
-[Firebase Auth] ─── Email/password authentication
+[whatsapp-webhook.js]     Receives Meta WhatsApp events
+[email-webhook.js]        Receives Mailgun inbound emails
       |
-[Firebase Firestore] ─── Real-time NoSQL database
+      ↓
+[Firebase Admin SDK]      Writes tickets to Firestore, stores media in Storage
       |
-      └── Collection: "tickets"
-              Documents: one per ticket
-              Fields: all fields from FR-03
+      ↓
+[Firebase Firestore]      tickets collection, agents collection
+
+[Agent Browser] also directly communicates with:
+[Firebase Auth]           Agent login
+[Firebase Firestore]      Real-time ticket list and updates
 ```
 
 ---
@@ -199,55 +206,45 @@ A web-based ticket tracker built with:
 ## 6. Data Model
 
 **Collection:** `tickets`  
-**Document ID:** Auto-generated by Firestore  
+**Document ID:** Auto-generated by Firestore
+
 **Fields:**
 
 ```json
 {
-  "ticketId":             "TKT-20260513-004",
-  "contactMethod":        "WhatsApp",
-  "identifier":           "12345678",
-  "issueType":            "Onboarding assistance",
-  "description":          "Member couldn't receive their OTP",
-  "dateReceived":         "2026-05-13",
-  "timeReceived":         "11:05",
-  "status":               "Resolved",
-  "timeToFirstResponse":  "17 minutes",
-  "resolutionTime":       "18 minutes",
-  "rtInHours":            0.3,
-  "resolutionDescription":"Member account created directly by agent",
-  "createdBy":            "agent@polmed.co.za",
-  "createdAt":            "Firestore Timestamp",
-  "updatedBy":            "agent2@polmed.co.za",
-  "updatedAt":            "Firestore Timestamp"
+  "ticketId": "TKT-20260811-WA-123456",
+  "contactMethod": "WhatsApp",
+  "source": "whatsapp-webhook",
+  "status": "New",
+  "message": "Member said their OTP did not arrive",
+  "description": "",
+  "issueType": "",
+  "identifier": "",
+  "phoneNumber": "+2765XXXXXXX",
+  "fromEmail": "",
+  "mediaUrl": "https://...",
+  "mediaType": "image",
+  "conversation": [
+    {"from":"member","text":"Hi, I can't log in","at":"2026-08-11T10:12:00Z"}
+  ],
+  "dateReceived": "2026-08-11",
+  "timeReceived": "10:12:00",
+  "createdBy": "WhatsApp webhook",
+  "createdAt": "Firestore Timestamp",
+  "updatedBy": "WhatsApp webhook",
+  "updatedAt": "Firestore Timestamp",
+  "hasNewReply": true
 }
 ```
 
 ---
 
-## 7. Feature-by-Feature Cost Breakdown
+## 7. Deployment Notes
 
-> Developer costs excluded as per requirement. Costs reflect platform/service fees only in ZAR (approximate, May 2026).
-
-### Phase 1 — Core Tracker (Current Build)
-
-| Feature | Service | Monthly Cost |
-|---|---|---|
-| User authentication (email/password) | Firebase Authentication | R0 (free up to 10,000 users/month) |
-| Real-time database (Firestore) | Firebase Firestore | R0 (free tier: 1GB storage, 50K reads/day, 20K writes/day) |
-| Hosting (web app) | Netlify Free Tier | R0 (100GB bandwidth/month) |
-| Custom domain (optional) | Any registrar | ~R150–R250/year |
-| **Phase 1 Total** | | **R0/month** (or ~R20/month with domain) |
-
-### Phase 2 — Google Sheets / Excel Sync (optional, future)
-
-| Feature | Service | Monthly Cost |
-|---|---|---|
-| Automation: Firestore → Google Sheets | Make.com Starter | ~R350/month |
-| OR Microsoft Power Automate | Microsoft 365 (if already licensed) | R0 additional |
-| **Phase 2 Total** | | **R0–R350/month** |
-
-### Phase 3 — WhatsApp Business API Integration (future)
+- `js/firebase-config.js` is already configured for the current Firebase project.
+- `docs/firestore.rules` defines agent-only access and supervisor delete privileges.
+- `netlify.toml` publishes the repo root and routes functions from `netlify/functions`.
+- Required environment variables are documented in `README.md`.
 
 | Feature | Service | Monthly Cost |
 |---|---|---|

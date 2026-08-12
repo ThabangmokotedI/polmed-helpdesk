@@ -1,64 +1,87 @@
 # Polmed Helpdesk
 
-Static site + Netlify serverless functions for the Polmed Connect member
-support helpdesk (WhatsApp auto-logging, email-to-ticket, role-based access).
+Polmed Connect Helpdesk is a working ticket tracker for member support that
+combines a static browser dashboard with Netlify serverless functions for
+WhatsApp and email ticket ingestion.
+
+## Current status
+
+- Core ticket dashboard is implemented and live-ready.
+- Authentication uses Firebase Email/Password.
+- Tickets sync in real time from Firestore.
+- WhatsApp webhook creates or appends WhatsApp tickets.
+- Email webhook creates tickets from Mailgun inbound email.
+- Firestore security rules allow authenticated agents to read/update tickets
+  and reserve delete permission for supervisors.
+- `js/firebase-config.js` is already populated with the Polmed Helpdesk Firebase
+  project config.
 
 ## Folder structure
 
 ```
 polmed-helpdesk/
-├── index.html              Login page
-├── dashboard.html          Main helpdesk dashboard
-├── netlify.toml            Netlify build config
-├── package.json            Dependencies (firebase-admin)
+├── index.html                      Login page
+├── dashboard.html                  Ticket dashboard and reports
+├── netlify.toml                    Netlify build config
+├── package.json                    Node dependencies for serverless functions
 ├── css/
-│   ├── auth.css            Styles for login page
-│   └── app.css             Styles for dashboard
+│   ├── auth.css                    Login page styling
+│   ├── app.css                     Dashboard styling
+│   └── conversation-thread.css     Chat thread + ticket detail styling
 ├── js/
-│   ├── firebase-config.js  Your Firebase web app config (NOT secret — see below)
-│   ├── local-firebase-mock.js  In-memory demo mode, used until firebase-config.js is filled in
-│   ├── auth.js              Login page behaviour
-│   ├── tickets.js           Ticket logic, reports, role checks
-│   └── app.js                Dashboard navigation/UI
+│   ├── firebase-config.js          Firebase web app config (safe to commit)
+│   ├── local-firebase-mock.js      Local mock mode when Firebase config is missing
+│   ├── auth.js                     Login/reset UI helpers
+│   └── tickets.js                  Ticket logic, reports, filters, roles
 ├── netlify/functions/
-│   ├── whatsapp-webhook.js  Receives WhatsApp messages → creates tickets
-│   └── email-webhook.js     Receives inbound email → creates tickets
+│   ├── whatsapp-webhook.js         Incoming WhatsApp ticket ingestion
+│   ├── email-webhook.js            Incoming email ticket ingestion
+│   └── polmed-helpdesk-firebase-adminsdk-fbsvc-7e5d2c2227.json
+│                                   Local Firebase Admin service account file
 └── docs/
-    ├── firestore.rules      Paste into Firebase Console → Firestore → Rules
-    └── srs.md               Software requirements spec
+    ├── firestore.rules             Firestore security rules
+    └── srs.md                      Software requirements specification
 ```
 
-## Where credentials live (read this before deploying)
+## Deployment and environment configuration
 
-This project uses **two different kinds** of Firebase credentials. They are
-not interchangeable, and only one of them is a secret.
+### Required Netlify environment variables
 
-| Credential | Where it goes | Secret? |
-|---|---|---|
-| Web app config (`apiKey`, `authDomain`, etc.) | `js/firebase-config.js` in this repo | No — safe to commit. It only identifies your project to the browser; it doesn't grant access on its own. |
-| Service account JSON (Admin SDK key) | **Netlify → Site configuration → Environment variables → `FIREBASE_SERVICE_ACCOUNT`** | **Yes.** This grants full read/write access to your Firestore database (all member tickets). It must never be committed to git, zipped into a shared folder, or pasted anywhere outside Netlify's environment variables. |
+- `FIREBASE_SERVICE_ACCOUNT` — service account JSON string for Firebase Admin
+- `FIREBASE_PROJECT_ID` — Firebase project ID
+- `WHATSAPP_VERIFY_TOKEN` — webhook verification token for Meta
+- `META_APP_SECRET` — Meta app secret used to verify incoming WhatsApp payloads
+- `WHATSAPP_ACCESS_TOKEN` — token used to download WhatsApp media attachments
+- `MAILGUN_SIGNING_KEY` — Mailgun inbound signature key (optional in dev)
 
-The `.gitignore` in this project already blocks any `*-firebase-adminsdk-*.json`
-file from being committed, as a safety net.
+### Important credential guidance
 
-### If your service account key was ever pasted somewhere outside Netlify
-(chat, email, a shared doc, etc.), treat it as exposed and rotate it:
-Firebase Console → gear icon → **Project settings → Service accounts →
-Generate new private key**, update the `FIREBASE_SERVICE_ACCOUNT` value in
-Netlify with the new one, then delete the old key from the same page
-("Manage service account permissions" → find the key → delete).
+- `js/firebase-config.js` contains public Firebase web app values and is safe
+  to keep in source control.
+- The service account JSON is secret and must only live in Netlify environment
+  variables for production.
+- If the local `netlify/functions/*-firebase-adminsdk-*.json` file exists,
+  treat it as a development artifact and do not commit or share it.
 
-## Filling in `js/firebase-config.js`
+### Netlify configuration
 
-1. Firebase Console → gear icon → **Project settings → General**.
-2. Scroll to "Your apps". If none exists, click **Add app → Web (`</>`)**.
-3. Copy the six values shown (`apiKey`, `authDomain`, `projectId`,
-   `storageBucket`, `messagingSenderId`, `appId`) into `js/firebase-config.js`,
-   replacing the `REPLACE_WITH_...` placeholders.
-4. Commit this file — it's safe, it's not the same as the service account key.
+The project is configured in `netlify.toml` to deploy the repo root as static
+site assets and to run functions from `netlify/functions`.
 
-## Deploying
+## How to use
 
-Push this folder to your Netlify site (via git or drag-and-drop deploy).
-`netlify.toml` already points Netlify at `netlify/functions` for the two
-webhook functions, and publishes the site root as static files.
+1. Ensure Firebase Authentication Email/Password is enabled.
+2. Create Firestore and apply the rules from `docs/firestore.rules`.
+3. Add agent users in Firebase Authentication.
+4. Configure required Netlify environment variables.
+5. Deploy the repo to Netlify.
+
+## Supported features
+
+- Agent login and password reset
+- Real-time ticket list and reports
+- Ticket filters by status, contact method, and issue type
+- WhatsApp ticket creation and message threading
+- Email ticket creation from Mailgun inbound email
+- Supervisor-only delete permission in Firestore rules
+- POPIA-aware data handling and agent audit metadata
