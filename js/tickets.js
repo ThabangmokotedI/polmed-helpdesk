@@ -1121,37 +1121,3 @@ function renderResolutionChart(subset) {
 }
 
 function updateReportPeriod() { renderReports(); }
-function listenToHealth() {
-  onSnapshot(doc(db, 'system', 'webhookHealth'), (snap) => {
-    const banner = document.getElementById('health-banner');
-    if (!banner) return;
-    if (!snap.exists()) { banner.style.display = 'none'; return; }
-    const data = snap.data();
-    const isProblem = data.lastStatus === 'config_error' || data.lastStatus === 'processing_error';
-    if (isProblem) {
-      const when = data.lastErrorAt?.toDate ? data.lastErrorAt.toDate().toLocaleString() : '';
-      banner.textContent = `⚠ WhatsApp webhook issue (${data.lastStatus}): ${data.lastErrorMessage || ''} — ${when}`;
-      banner.style.display = 'block';
-    } else {
-      banner.style.display = 'none';
-    }
-  }, (err) => console.error('Health listener error:', err.message));
-}
-function checkSignature(event) {
-  if (!appSecret) return { ok: false, reason: 'config_error' };
-
-  const signatureHeader = event.headers?.['x-hub-signature-256'] || event.headers?.['X-Hub-Signature-256'];
-  if (!signatureHeader || !signatureHeader.startsWith('sha256=')) return { ok: false, reason: 'missing_header' };
-
-  const receivedSig = signatureHeader.slice('sha256='.length);
-  const rawBody = event.isBase64Encoded
-    ? Buffer.from(event.body || '', 'base64')
-    : Buffer.from(event.body || '', 'utf8');
-  const expectedSig = crypto.createHmac('sha256', appSecret).update(rawBody).digest('hex');
-
-  const receivedBuf = Buffer.from(receivedSig, 'hex');
-  const expectedBuf = Buffer.from(expectedSig, 'hex');
-  if (receivedBuf.length !== expectedBuf.length) return { ok: false, reason: 'mismatch' };
-
-  return { ok: crypto.timingSafeEqual(receivedBuf, expectedBuf), reason: 'mismatch' };
-}
