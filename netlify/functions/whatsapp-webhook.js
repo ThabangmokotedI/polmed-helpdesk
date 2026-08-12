@@ -2,31 +2,37 @@
 // Receives inbound WhatsApp messages via Meta Cloud API and creates tickets in Firestore.
 // Media messages (images, documents, etc.) are downloaded from Meta and stored in Firebase Storage.
 //
-// UPDATED: if the sender already has an open (non-Resolved, non-Unresolved) ticket,
-// the new message is appended to that ticket's conversation thread instead of
-// creating a brand new ticket. This stops a normal back-and-forth WhatsApp
-// conversation from spawning a fresh ticket for every message.
+// SECURITY: every POST from Meta is signed with your Meta App Secret, sent in the
+// x-hub-signature-256 header. We verify that signature against the raw request body
+// before trusting anything in it.
 //
-// SECURITY FIX (priority #2): every inbound POST is now verified against
-// Meta's X-Hub-Signature-256 header before anything else happens. Without
-// this, anyone who found this Netlify URL could POST a fake, Meta-shaped
-// payload and create real tickets / inject fake "member" messages into
-// open tickets, indistinguishable from genuine WhatsApp traffic.
+// HEALTH MONITORING: every run writes a heartbeat to system/webhookHealth in Firestore
+// (read live by the dashboard banner) and, on a genuine config/processing problem,
+// sends an email alert via Mailgun (rate-limited to once per 30 min). A forged/bad
+// signature from a random request is NOT treated as a health problem — that's the
+// security check working as intended, not a system fault.
+//
+// Requires:
+//   WHATSAPP_VERIFY_TOKEN, WHATSAPP_ACCESS_TOKEN, WHATSAPP_APP_SECRET,
+//   FIREBASE_PROJECT_ID, FIREBASE_SERVICE_ACCOUNT (existing)
+//   MAILGUN_SIGNING_KEY, MAILGUN_DOMAIN, ALERT_EMAIL_TO (new, for alert emails)
 
-const admin   = require('firebase-admin');
-const crypto  = require('crypto');
+const admin  = require('firebase-admin');
+const crypto = require('crypto');
 
-const verifyToken  = process.env.WHATSAPP_VERIFY_TOKEN;
-const appSecret    = process.env.META_APP_SECRET;          // ← NEW: used to verify POST signatures
-const projectId    = process.env.FIREBASE_PROJECT_ID;
-const accessToken  = process.env.WHATSAPP_ACCESS_TOKEN; // same permanent token used for sending
-const graphVersion = 'v21.0';
+const verifyToken   = process.env.WHATSAPP_VERIFY_TOKEN;
+const appSecret     = process.env.WHATSAPP_APP_SECRET;
+const projectId     = process.env.FIREBASE_PROJECT_ID;
+const accessToken   = process.env.WHATSAPP_ACCESS_TOKEN;
+const graphVersion  = 'v21.0';
 
-// Statuses that count as "still open" — a new message from the same number
-// gets threaded onto the most recent ticket in one of these statuses.
+const mailgunApiKey = process.env.MAILGUN_SIGNING_KEY;
+const mailgunDomain  = process.env.MAILGUN_DOMAIN;
+const alertEmailTo   = process.env.ALERT_EMAIL_TO;
+const ALERT_COOLDOWN_MS = 30 * 60 * 1000;
+
 const OPEN_STATUSES = ['New', 'In Progress'];
 
-// Initialise Firebase Admin SDK once
 if (!admin.apps.length) {
   const serviceAccountRaw = process.env.FIREBASE_SERVICE_ACCOUNT;
   if (!serviceAccountRaw || !projectId) {
@@ -44,31 +50,88 @@ if (!admin.apps.length) {
   }
 }
 
-// ── Webhook signature verification ───────────────────────────────────────────
-// Meta signs every POST body with your App Secret. We recompute the same
-// HMAC-SHA256 over the exact raw body we received and compare it to the
-// x-hub-signature-256 header using a timing-safe comparison (a plain ===
-// or string comparison would leak timing information an attacker could use
-// to guess the correct signature one byte at a time).
-function isValidSignature(rawBody, signatureHeader) {
-  if (!appSecret) {
-    console.error('META_APP_SECRET not set — rejecting webhook POST (cannot verify signature)');
-    return false;
+// ── Health heartbeat + alert email ───────────────────────────────────────────
+async function recordHealth(status, errorMessage) {
+  if (!admin.apps.length) return;
+  const db  = admin.firestore();
+  const ref = db.collection('system').doc('webhookHealth');
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const isProblem = status === 'config_error' || status === 'processing_error';
+
+  const update = { lastRunAt: now, lastStatus: status };
+  if (status === 'ok') { update.lastSuccessAt = now; update.consecutiveErrors = 0; }
+  if (isProblem) {
+    update.lastErrorAt = now;
+    update.lastErrorMessage = errorMessage || '';
+    update.consecutiveErrors = admin.firestore.FieldValue.increment(1);
   }
-  if (!signatureHeader || !signatureHeader.startsWith('sha256=')) {
-    return false;
+
+  try { await ref.set(update, { merge: true }); }
+  catch (err) { console.error('Could not write health heartbeat:', err.message); }
+
+  if (isProblem) await maybeSendAlertEmail(status, errorMessage);
+}
+
+async function maybeSendAlertEmail(status, errorMessage) {
+  if (!mailgunApiKey || !mailgunDomain || !alertEmailTo) {
+    console.error('Alert email not configured (need MAILGUN_SIGNING_KEY, MAILGUN_DOMAIN, ALERT_EMAIL_TO)');
+    return;
   }
-  const expectedSignature =
-    'sha256=' + crypto.createHmac('sha256', appSecret).update(rawBody, 'utf8').digest('hex');
+  const db  = admin.firestore();
+  const ref = db.collection('system').doc('webhookHealth');
+  try {
+    const snap = await ref.get();
+    const lastAlertMs = snap.exists ? snap.data().lastAlertSentAt?.toMillis?.() : null;
+    if (lastAlertMs && (Date.now() - lastAlertMs) < ALERT_COOLDOWN_MS) return;
+    await ref.set({ lastAlertSentAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  } catch (err) {
+    console.error('Could not check alert cooldown:', err.message);
+    return;
+  }
 
-  const receivedBuffer = Buffer.from(signatureHeader);
-  const expectedBuffer = Buffer.from(expectedSignature);
+  try {
+    const form = new URLSearchParams();
+    form.append('from', `Polmed Helpdesk Alerts <alerts@${mailgunDomain}>`);
+    form.append('to', alertEmailTo);
+    form.append('subject', `⚠ Polmed Helpdesk: WhatsApp webhook issue (${status})`);
+    form.append('text',
+      `The WhatsApp webhook has reported a problem and may not be creating tickets from member messages.\n\n` +
+      `Status: ${status}\nDetails: ${errorMessage || 'No further detail available.'}\nTime: ${new Date().toISOString()}\n\n` +
+      `Check the whatsapp-webhook function logs in Netlify.`
+    );
+    const res = await fetch(`https://api.mailgun.net/v3/${mailgunDomain}/messages`, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Basic ' + Buffer.from(`api:${mailgunApiKey}`).toString('base64'),
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: form.toString()
+    });
+    if (!res.ok) console.error('Mailgun alert send failed:', res.status, await res.text());
+    else console.log('Alert email sent for status:', status);
+  } catch (err) {
+    console.error('Error sending alert email:', err.message);
+  }
+}
 
-  // Buffers must be equal length for timingSafeEqual — different lengths
-  // means it's already invalid, and comparing would throw.
-  if (receivedBuffer.length !== expectedBuffer.length) return false;
+// ── Signature verification ───────────────────────────────────────────────────
+function checkSignature(event) {
+  if (!appSecret) return { ok: false, reason: 'config_error' };
 
-  return crypto.timingSafeEqual(receivedBuffer, expectedBuffer);
+  const signatureHeader = event.headers?.['x-hub-signature-256'] || event.headers?.['X-Hub-Signature-256'];
+  if (!signatureHeader || !signatureHeader.startsWith('sha256=')) return { ok: false, reason: 'missing_header' };
+
+  const receivedSig = signatureHeader.slice('sha256='.length);
+  const rawBody = event.isBase64Encoded
+    ? Buffer.from(event.body || '', 'base64')
+    : Buffer.from(event.body || '', 'utf8');
+  const expectedSig = crypto.createHmac('sha256', appSecret).update(rawBody).digest('hex');
+
+  const receivedBuf = Buffer.from(receivedSig, 'hex');
+  const expectedBuf = Buffer.from(expectedSig, 'hex');
+  if (receivedBuf.length !== expectedBuf.length) return { ok: false, reason: 'mismatch' };
+
+  return { ok: crypto.timingSafeEqual(receivedBuf, expectedBuf), reason: 'mismatch' };
 }
 
 // ── Media handling ────────────────────────────────────────────────────────────
@@ -103,7 +166,6 @@ async function fetchAndStoreMedia(mediaId, mimeType, ticketId) {
 }
 
 exports.handler = async function (event) {
-  // ── Webhook verification (GET from Meta) ────────────────────────────────────
   if (event.httpMethod === 'GET') {
     const p = event.queryStringParameters || {};
     if (p['hub.mode'] === 'subscribe' && p['hub.verify_token'] === verifyToken) {
@@ -116,24 +178,22 @@ exports.handler = async function (event) {
     return { statusCode: 405, body: 'Method not allowed' };
   }
 
-  // ── Verify this POST really came from Meta before touching anything else ───
-  // Netlify may base64-encode the body depending on how the request came in,
-  // so we normalise to the exact raw text Meta signed before hashing it.
-  const rawBody = event.isBase64Encoded
-    ? Buffer.from(event.body || '', 'base64').toString('utf8')
-    : (event.body || '');
-
-  const signatureHeader =
-    event.headers?.['x-hub-signature-256'] || event.headers?.['X-Hub-Signature-256'];
-
-  if (!isValidSignature(rawBody, signatureHeader)) {
-    console.error('Rejected webhook POST — missing or invalid X-Hub-Signature-256');
+  const sigCheck = checkSignature(event);
+  if (!sigCheck.ok) {
+    if (sigCheck.reason === 'config_error') {
+      console.error('WHATSAPP_APP_SECRET not set — rejecting webhook POST');
+      await recordHealth('config_error', 'WHATSAPP_APP_SECRET is not set in environment variables');
+    } else {
+      console.error('Rejected webhook POST: invalid or missing x-hub-signature-256');
+      // Not a health problem — a forged/bad request is the security check
+      // working as intended. No alert, no banner.
+    }
     return { statusCode: 401, body: 'Invalid signature' };
   }
 
   let body;
   try {
-    body = JSON.parse(rawBody);
+    body = JSON.parse(event.body);
   } catch {
     return { statusCode: 400, body: 'Invalid JSON' };
   }
@@ -146,14 +206,13 @@ exports.handler = async function (event) {
   const sender = message?.from || 'unknown';
   const now    = new Date();
 
-  // ── Figure out message content (text vs media) ──────────────────────────────
   let text     = message?.text?.body || '';
   let mediaUrl = null;
   let mediaType = null;
 
   const ds = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
   const ts = `${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}`;
-  const tempIdForMedia = `TMP-${ds}-${ts}`; // only used as a storage path if this turns out to be a new ticket
+  const tempIdForMedia = `TMP-${ds}-${ts}`;
 
   if (MEDIA_TYPES.includes(message.type)) {
     const mediaObj = message[message.type];
@@ -166,8 +225,6 @@ exports.handler = async function (event) {
       text = `[${message.type} attached — could not be retrieved, ask member to resend]`;
     }
   } else if (message.type === 'reaction') {
-    // Member tapped an emoji reaction on a previous message (e.g. 👍 on your reply).
-    // message.reaction.emoji is '' if they removed a reaction rather than added one.
     const emoji = message.reaction?.emoji;
     text = emoji ? `Reacted ${emoji} to a previous message` : 'Removed their reaction to a previous message';
   } else if (message.type === 'location') {
@@ -185,7 +242,6 @@ exports.handler = async function (event) {
   try {
     const db = admin.firestore();
 
-    // ── Look for an existing OPEN ticket from this same sender ────────────────
     const existingSnap = await db.collection('tickets')
       .where('phoneNumber', '==', sender)
       .where('status', 'in', OPEN_STATUSES)
@@ -194,7 +250,6 @@ exports.handler = async function (event) {
       .get();
 
     if (!existingSnap.empty) {
-      // ── Thread the new message onto the existing ticket ─────────────────────
       const ticketDoc = existingSnap.docs[0];
       const ticketData = ticketDoc.data();
 
@@ -216,13 +271,12 @@ exports.handler = async function (event) {
       });
 
       console.log('Appended to existing ticket:', ticketData.ticketId, 'from sender:', sender.slice(-4));
+      await recordHealth('ok');
       return { statusCode: 200, body: JSON.stringify({ ok: true, ticketId: ticketData.ticketId, appended: true }) };
     }
 
-    // ── No open ticket found — create a new one ────────────────────────────────
     const ticketId = `TKT-${ds}-WA-${ts}`;
 
-    // If this message had media, move it from the temp path to the real ticket ID path
     let finalMediaUrl = mediaUrl;
     if (mediaUrl) {
       try {
@@ -235,7 +289,6 @@ exports.handler = async function (event) {
         finalMediaUrl = url;
       } catch (err) {
         console.error('Could not rename media file to final ticket ID:', err.message);
-        // fall back to the temp URL — not fatal
       }
     }
 
@@ -261,10 +314,12 @@ exports.handler = async function (event) {
 
     await db.collection('tickets').add(ticket);
     console.log('New ticket created:', ticketId, 'from sender:', sender.slice(-4), mediaType ? `(media: ${mediaType})` : '');
+    await recordHealth('ok');
     return { statusCode: 200, body: JSON.stringify({ ok: true, ticketId }) };
 
   } catch (err) {
     console.error('Firestore error:', err.message);
+    await recordHealth('processing_error', err.message);
     return { statusCode: 500, body: 'Error creating/updating ticket: ' + err.message };
   }
 };

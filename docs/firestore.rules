@@ -2,7 +2,6 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper: check the current user's role from the agents collection
     function getRole() {
       return get(/databases/$(database)/documents/agents/$(request.auth.uid)).data.get('role', 'agent');
     }
@@ -10,23 +9,26 @@ service cloud.firestore {
     function isSupervisor()    { return isAuthenticated() && getRole() == 'supervisor'; }
     function isAgent()         { return isAuthenticated(); }
 
-    // Tickets collection
     match /tickets/{ticketId} {
       allow read:   if isAgent();
       allow create: if isAgent();
       allow update: if isAgent();
-      allow delete: if isSupervisor();   // ONLY supervisors can delete
+      allow delete: if isSupervisor();
     }
 
-    // Agents / roles collection
     match /agents/{userId} {
-      // Any authenticated user can read their own role document
       allow read:  if isAuthenticated() && (request.auth.uid == userId || isSupervisor());
-      // Only supervisors can change roles; new agents auto-created with 'agent' role
       allow create: if isAuthenticated() && request.auth.uid == userId
                        && request.resource.data.role == 'agent';
       allow update: if isSupervisor();
       allow delete: if isSupervisor();
+    }
+
+    // System health heartbeat — read-only for agents, written only by the
+    // Admin SDK from trusted server functions (never directly by a client).
+    match /system/{docId} {
+      allow read:  if isAgent();
+      allow write: if false;
     }
   }
 }
