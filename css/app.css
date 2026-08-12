@@ -16,6 +16,10 @@
   --text-mid: #3D5550;
   --text-muted: #6B8580;
   --text-hint: #9EBAB6;
+  --text-1: var(--text);
+  --text-2: var(--text-muted);
+  --surface-0: var(--surface);
+  --surface-1: var(--bg);
   --sidebar-bg: #00354A;
   --sidebar-text: rgba(255,255,255,0.7);
   --sidebar-active: rgba(26,125,160,0.3);
@@ -498,7 +502,6 @@ body {
 .badge.res { background: var(--badge-res-bg); color: var(--badge-res-t); }
 .badge.prog { background: var(--badge-prog-bg); color: var(--badge-prog-t); }
 .badge.unres { background: var(--badge-unres-bg); color: var(--badge-unres-t); }
-.badge.redir { background: #EEF2F7; color: #475569; }
 .badge.redir { background: #EEF2F7; color: #475569; }
 
 .row-edit-btn {
