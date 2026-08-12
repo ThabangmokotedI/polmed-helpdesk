@@ -200,16 +200,6 @@ function renderStats() {
   document.getElementById('stat-unres').textContent = unres;
   document.getElementById('stat-wa').textContent    = wa;
   document.getElementById('stat-email').textContent = em;
-  renderNewCount();
-}
-
-function renderNewCount() {
-  const newCount = tickets.filter(t => t.status === 'New' && !t.openedByAgent).length;
-  const box      = document.getElementById('new-count-box');
-  const counter  = document.getElementById('new-count');
-  if (!box || !counter) return;
-  counter.textContent   = newCount;
-  box.style.display = newCount > 0 ? 'inline-flex' : 'none';
   renderUnreadCount();
 }
 
@@ -636,7 +626,6 @@ function viewTicket(id) {
 
   const ticketUpdates = {};
   if (t.hasNewReply) ticketUpdates.hasNewReply = false;
-  if (t.status === 'New') ticketUpdates.openedByAgent = true;
   if (Object.keys(ticketUpdates).length > 0) {
     updateDoc(doc(db, 'tickets', id), ticketUpdates).catch(() => {});
   }
