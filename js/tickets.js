@@ -204,7 +204,7 @@ function renderStats() {
 }
 
 function renderNewCount() {
-  const newCount = tickets.filter(t => t.status === 'New').length;
+  const newCount = tickets.filter(t => t.status === 'New' && !t.openedByAgent).length;
   const box      = document.getElementById('new-count-box');
   const counter  = document.getElementById('new-count');
   if (!box || !counter) return;
@@ -261,15 +261,25 @@ function stopTitleFlash() {
 function playAlertSound() {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const o = ctx.createOscillator();
     const g = ctx.createGain();
-    o.type = 'sine';
-    o.frequency.value = 880;
-    g.gain.value = 0.15;
-    o.connect(g);
+    g.gain.value = 0.3;
     g.connect(ctx.destination);
-    o.start();
-    setTimeout(() => { o.stop(); ctx.close(); }, 220);
+
+    const firstTone = ctx.createOscillator();
+    firstTone.type = 'sine';
+    firstTone.frequency.value = 880;
+    firstTone.connect(g);
+    firstTone.start();
+    firstTone.stop(ctx.currentTime + 0.18);
+
+    const secondTone = ctx.createOscillator();
+    secondTone.type = 'sine';
+    secondTone.frequency.value = 1046;
+    secondTone.connect(g);
+    secondTone.start(ctx.currentTime + 0.26);
+    secondTone.stop(ctx.currentTime + 0.26 + 0.22);
+
+    setTimeout(() => { ctx.close(); }, 520);
   } catch {
     // Browsers block audio until the user has interacted with the page at
     // least once in the session — this is normal, not a bug.
@@ -624,8 +634,11 @@ function viewTicket(id) {
     startTypingWatch(id);
   }
 
-  if (t.hasNewReply) {
-    updateDoc(doc(db, 'tickets', id), { hasNewReply: false }).catch(() => {});
+  const ticketUpdates = {};
+  if (t.hasNewReply) ticketUpdates.hasNewReply = false;
+  if (t.status === 'New') ticketUpdates.openedByAgent = true;
+  if (Object.keys(ticketUpdates).length > 0) {
+    updateDoc(doc(db, 'tickets', id), ticketUpdates).catch(() => {});
   }
 }
 
