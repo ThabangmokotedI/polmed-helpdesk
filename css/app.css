@@ -7,6 +7,7 @@
   --teal-light: #E3F4FA;
   --navy: #00354A;
   --navy-mid: #004F6E;
+  --row-tint: #F2F8FB;
   --bg: #F0F4F6;
   --surface: #FFFFFF;
   --border: #E0E8E6;
@@ -444,6 +445,8 @@ body {
 
 .table-row:last-child { border-bottom: none; }
 .table-row:hover { background: #F7FBFC; }
+.table-row:nth-child(even) { background: var(--row-tint); }
+.table-row:nth-child(even):hover { background: #E8F2F7; }
 
 .td {
   padding: 12px 14px;
