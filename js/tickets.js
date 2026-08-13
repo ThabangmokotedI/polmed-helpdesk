@@ -612,6 +612,7 @@ function viewTicket(id) {
     <div class="detail-section">
       <div class="detail-section-label">Reply to member (WhatsApp)</div>
       <div id="typing-indicator" style="display:none;align-items:center;gap:6px;background:#FEF3C7;border:1px solid #FDE68A;color:#92400E;font-size:12px;font-weight:500;padding:7px 12px;border-radius:8px;margin-bottom:8px"></div>
+      <div id="quoted-reply-banner" style="display:none"></div>
       <select id="quick-reply-select" style="width:100%;margin-bottom:8px;padding:7px;border-radius:8px;border:1px solid #ddd;font:inherit;background:#fafafa"></select>
       <textarea id="detail-reply-text" rows="3"
         style="width:100%;box-sizing:border-box;padding:8px;border-radius:8px;border:1px solid #ddd;font:inherit;resize:vertical"
@@ -700,6 +701,73 @@ function renderMediaHTML(mediaPath, type, size) {
   return `<div id="${elId}" style="margin-top:6px;color:#888;font-size:12px">Loading attachment…</div>`;
 }
 
+const REACTION_EMOJIS = ['👍', '🙏', '✅', '❤️', '😊', '🎉'];
+let currentReplyTarget = null; // { waMessageId, text } or null
+
+function renderReplyBanner() {
+  const el = document.getElementById('quoted-reply-banner');
+  if (!el) return;
+  if (!currentReplyTarget) {
+    el.style.display = 'none';
+    el.innerHTML = '';
+    return;
+  }
+  el.style.display = 'flex';
+  const preview = (currentReplyTarget.text || '').slice(0, 120);
+  el.innerHTML = `
+    <div class="quoted-reply-text">Replying to: "${escapeHtml(preview)}"</div>
+    <button type="button" class="quoted-reply-cancel" onclick="cancelQuotedReply()">✕</button>
+  `;
+}
+
+window.startQuotedReply = function (waMessageId) {
+  const t = tickets.find(x => x.id === editingId);
+  if (!t) return;
+  const convo = Array.isArray(t.conversation) ? t.conversation : [];
+  const original = convo.find(e => e.waMessageId === waMessageId);
+  if (!original) return;
+  currentReplyTarget = { waMessageId, text: original.text };
+  renderReplyBanner();
+  const textarea = document.getElementById('detail-reply-text');
+  if (textarea) textarea.focus();
+};
+
+window.cancelQuotedReply = function () {
+  currentReplyTarget = null;
+  renderReplyBanner();
+};
+
+window.sendReactionToMessage = async function (waMessageId, emoji) {
+  const t = tickets.find(x => x.id === editingId);
+  if (!t || !t.phoneNumber) return;
+  try {
+    if (!currentUser) throw new Error('You are not signed in. Please refresh and log in again.');
+    const idToken = await currentUser.getIdToken();
+    const res = await fetch('/.netlify/functions/send-whatsapp-interaction', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+      body: JSON.stringify({
+        ticketId: t.ticketId,
+        phoneNumber: t.phoneNumber,
+        targetMessageId: waMessageId,
+        mode: 'reaction',
+        emoji
+      })
+    });
+    const result = await res.json();
+    if (!res.ok || !result.ok) {
+      throw new Error(
+        result?.error?.error?.message ||
+        (typeof result?.error === 'string' ? result.error : null) ||
+        'Could not send reaction.'
+      );
+    }
+    updateDoc(doc(db, 'tickets', t.id), { updatedAt: serverTimestamp() }).catch(() => {});
+  } catch (e) {
+    alert('Error sending reaction: ' + e.message);
+  }
+};
+
 // ── Conversation thread (WhatsApp back-and-forth) ───────────────────────────
 function renderConversation(id) {
   const el = document.getElementById('conversation-thread');
@@ -714,15 +782,42 @@ function renderConversation(id) {
   }
 
   const sorted = [...convo].sort((a, b) => new Date(a.at) - new Date(b.at));
+
   el.innerHTML = sorted.map(entry => {
     const isAgent = entry.from === 'agent';
     const when = entry.at ? new Date(entry.at).toLocaleString() : '';
+
+    if (isAgent && entry.isReaction) {
+      return `<div class="convo-reaction-line">${escapeHtml(when)} — ${escapeHtml(entry.text)}</div>`;
+    }
+
     const mediaHtml = renderMediaHTML(entry.mediaPath, entry.mediaType, 'small');
+
+    let quotedHtml = '';
+    if (isAgent && entry.repliedToMessageId) {
+      const original = sorted.find(e => e.waMessageId === entry.repliedToMessageId);
+      const quotedText = original ? original.text : null;
+      if (quotedText) {
+        quotedHtml = `<div class="convo-quoted">${escapeHtml(quotedText.slice(0, 140))}</div>`;
+      }
+    }
+
+    const actionBar = (!isAgent && entry.waMessageId)
+      ? `<div class="convo-actions">
+          <button type="button" class="convo-action-btn" onclick="startQuotedReply('${entry.waMessageId}')" title="Reply to this message">↩</button>
+          ${REACTION_EMOJIS.map(e => `<button type="button" class="convo-action-btn" onclick="sendReactionToMessage('${entry.waMessageId}', '${e}')" title="React">${e}</button>`).join('')}
+        </div>`
+      : '';
+
     return `
-      <div class="convo-bubble ${isAgent ? 'convo-agent' : 'convo-member'}">
-        <div class="convo-meta">${isAgent ? 'You (agent)' : 'Member'} · ${escapeHtml(when)}</div>
-        <div class="convo-text">${escapeHtml(entry.text)}</div>
-        ${mediaHtml}
+      <div class="convo-bubble-wrap ${isAgent ? 'convo-agent-wrap' : 'convo-member-wrap'}">
+        <div class="convo-bubble ${isAgent ? 'convo-agent' : 'convo-member'}">
+          <div class="convo-meta">${isAgent ? 'You (agent)' : 'Member'} · ${escapeHtml(when)}</div>
+          ${quotedHtml}
+          <div class="convo-text">${escapeHtml(entry.text)}</div>
+          ${mediaHtml}
+        </div>
+        ${actionBar}
       </div>
     `;
   }).join('');
@@ -808,6 +903,7 @@ function closeDetail() {
   if (editingId) clearTyping(editingId);
   clearTimeout(typingStopTimer);
   stopTypingWatch();
+  currentReplyTarget = null;
   document.getElementById('detail-overlay').classList.remove('open');
 }
 function editFromDetail() { closeDetail(); editTicketById(editingId); }
@@ -839,17 +935,32 @@ window.sendWhatsAppReply = async function () {
   try {
     if (!currentUser) throw new Error('You are not signed in. Please refresh and log in again.');
     const idToken = await currentUser.getIdToken();
-    const res = await fetch('/.netlify/functions/send-whatsapp-reply', {
+
+    const isQuotedReply = !!currentReplyTarget;
+    const url = isQuotedReply
+      ? '/.netlify/functions/send-whatsapp-interaction'
+      : '/.netlify/functions/send-whatsapp-reply';
+    const payload = isQuotedReply
+      ? {
+          ticketId: t.ticketId,
+          phoneNumber: t.phoneNumber,
+          targetMessageId: currentReplyTarget.waMessageId,
+          mode: 'reply',
+          message
+        }
+      : {
+          ticketId: t.ticketId,
+          phoneNumber: t.phoneNumber,
+          message
+        };
+
+    const res = await fetch(url, {
       method:  'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${idToken}`
       },
-      body: JSON.stringify({
-        ticketId:    t.ticketId,
-        phoneNumber: t.phoneNumber,
-        message
-      })
+      body: JSON.stringify(payload)
     });
     const result = await res.json();
     if (!res.ok || !result.ok) {
@@ -860,11 +971,11 @@ window.sendWhatsAppReply = async function () {
       );
     }
     alert('Reply sent to the member on WhatsApp.');
-    // Bump the ticket's activity time immediately so it re-sorts to the top
-    // without waiting on the webhook to write the conversation entry back.
     updateDoc(doc(db, 'tickets', t.id), { updatedAt: serverTimestamp() }).catch(() => {});
     clearTimeout(typingStopTimer);
     clearTyping(t.id);
+    currentReplyTarget = null;
+    renderReplyBanner();
   } catch (e) {
     alert('Error sending WhatsApp reply: ' + e.message);
   }

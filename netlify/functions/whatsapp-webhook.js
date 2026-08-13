@@ -206,6 +206,7 @@ exports.handler = async function (event) {
   if (!message) return { statusCode: 200, body: 'Not a message event' };
 
   const sender = message?.from || 'unknown';
+  const waMessageId = message?.id || null;
   const now    = new Date();
 
   let text     = message?.text?.body || '';
@@ -260,6 +261,7 @@ exports.handler = async function (event) {
         text,
         mediaPath,
         mediaType,
+        waMessageId,
         at: now.toISOString()
       };
 
@@ -305,7 +307,7 @@ exports.handler = async function (event) {
       phoneNumber:   sender,
       description:   '',
       issueType:     '',
-      conversation:  [{ from: 'member', text, mediaPath: finalMediaPath, mediaType, at: now.toISOString() }],
+      conversation:  [{ from: 'member', text, mediaPath: finalMediaPath, mediaType, waMessageId, at: now.toISOString() }],
       dateReceived:  now.toISOString().split('T')[0],
       timeReceived:  now.toTimeString().split(' ')[0],
       createdBy:     'WhatsApp webhook',
