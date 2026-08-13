@@ -48,6 +48,7 @@ let currentUser = null;
 let currentRole = 'agent';   // 'agent' | 'supervisor'
 let tickets     = [];
 let editingId   = null;
+let formDirty   = false;
 
 // ── Global function exports ───────────────────────────────────────────────────
 window.filterTickets    = filterTickets;
@@ -353,6 +354,7 @@ function openNewTicket() {
   clearForm();
   document.getElementById('f-date').value = new Date().toISOString().split('T')[0];
   document.getElementById('ticket-overlay').classList.add('open');
+  formDirty = false;
 }
 
 function editTicketById(id) {
@@ -380,6 +382,7 @@ function editTicketById(id) {
   document.getElementById('ticket-overlay').classList.add('open');
 
   autoFillTimingFields(t);
+  formDirty = false;
 }
 
 function autoFillTimingFields(t) {
@@ -480,6 +483,7 @@ window.suggestFromConversation = function () {
 };
 
 function closeModal() {
+  if (formDirty && !confirm('You have unsaved changes. Discard them?')) return;
   document.getElementById('ticket-overlay').classList.remove('open');
 }
 
@@ -520,6 +524,7 @@ async function saveTicket() {
       data.source    = 'manual';
       await addDoc(collection(db, 'tickets'), data);
     }
+    formDirty = false;
     closeModal();
   } catch (e) {
     alert('Error saving ticket: ' + e.message);
@@ -1110,3 +1115,11 @@ function renderResolutionChart(subset) {
 }
 
 function updateReportPeriod() { renderReports(); }
+
+document.addEventListener('DOMContentLoaded', () => {
+  const ticketOverlay = document.getElementById('ticket-overlay');
+  if (ticketOverlay) {
+    ticketOverlay.addEventListener('input', () => { formDirty = true; });
+    ticketOverlay.addEventListener('change', () => { formDirty = true; });
+  }
+});
