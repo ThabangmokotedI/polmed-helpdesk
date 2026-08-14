@@ -684,7 +684,7 @@ function viewTicket(id) {
       <div class="detail-section-label">Reply to member (WhatsApp)</div>
       <div id="typing-indicator" style="display:none;align-items:center;gap:6px;background:#FEF3C7;border:1px solid #FDE68A;color:#92400E;font-size:12px;font-weight:500;padding:7px 12px;border-radius:8px;margin-bottom:8px"></div>
       <div id="quoted-reply-banner" style="display:none"></div>
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <div style="display:none;align-items:center;gap:8px;margin-bottom:8px">
         <input type="file" id="reply-file-input" accept="image/*,video/*,.pdf,.doc,.docx" style="display:none" onchange="onAttachmentSelected(this)">
         <button type="button" class="btn btn-sm" onclick="document.getElementById('reply-file-input').click()">📎 Attach file</button>
         <span id="reply-file-name" style="font-size:12px;color:#6B8580;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
@@ -1074,7 +1074,7 @@ window.sendWhatsAppReply = async function () {
   if (!t || !t.phoneNumber) return;
   const textarea = document.getElementById('detail-reply-text');
   const message = (textarea?.value || '').trim();
-  if (!message && !pendingAttachment) { alert('Reply text is empty.'); return; }
+  if (!message) { alert('Reply text is empty.'); return; }
 
   const btn = document.getElementById('send-reply-btn');
   const originalLabel = btn.textContent;
@@ -1082,38 +1082,17 @@ window.sendWhatsAppReply = async function () {
   btn.textContent = 'Sending…';
   try {
     if (!currentUser) throw new Error('You are not signed in. Please refresh and log in again.');
-
-    if (pendingAttachment) {
-      await sendPendingAttachment(t, message);
-      alert('Attachment sent to the member on WhatsApp.');
-      updateDoc(doc(db, 'tickets', t.id), { updatedAt: serverTimestamp() }).catch(() => {});
-      clearAttachment();
-      if (textarea) textarea.value = '';
-    } else {
-      const idToken = await currentUser.getIdToken();
-      const isQuotedReply = !!currentReplyTarget;
-      const url = isQuotedReply ? '/.netlify/functions/send-whatsapp-interaction' : '/.netlify/functions/send-whatsapp-reply';
-      const payload = isQuotedReply
-        ? { ticketId: t.ticketId, phoneNumber: t.phoneNumber, targetMessageId: currentReplyTarget.waMessageId, mode: 'reply', message }
-        : { ticketId: t.ticketId, phoneNumber: t.phoneNumber, message };
-
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-        body: JSON.stringify(payload)
-      });
-      const result = await res.json();
-      if (!res.ok || !result.ok) {
-        throw new Error(
-          result?.error?.error?.message ||
-          (typeof result?.error === 'string' ? result.error : null) ||
-          'Send failed. Note: WhatsApp only allows free-form replies within 24 hours of the member\'s last message — after that, only a pre-approved template can be sent.'
-        );
-      }
-      alert('Reply sent to the member on WhatsApp.');
-      updateDoc(doc(db, 'tickets', t.id), { updatedAt: serverTimestamp() }).catch(() => {});
+    const idToken = await currentUser.getIdToken();
+    const isQuotedReply = !!currentReplyTarget;
+    const url = isQuotedReply ? '/.netlify/functions/send-whatsapp-interaction' : '/.netlify/functions/send-whatsapp-reply';
+    const payload = isQuotedReply ? { ticketId: t.ticketId, phoneNumber: t.phoneNumber, targetMessageId: currentReplyTarget.waMessageId, mode: 'reply', message } : { ticketId: t.ticketId, phoneNumber: t.phoneNumber, message };
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` }, body: JSON.stringify(payload) });
+    const result = await res.json();
+    if (!res.ok || !result.ok) {
+      throw new Error( result?.error?.error?.message || (typeof result?.error === 'string' ? result.error : null) || 'Send failed. Note: WhatsApp only allows free-form replies within 24 hours of the member\'s last message — after that, only a pre-approved template can be sent.' );
     }
-
+    alert('Reply sent to the member on WhatsApp.');
+    updateDoc(doc(db, 'tickets', t.id), { updatedAt: serverTimestamp() }).catch(() => {});
     clearTimeout(typingStopTimer);
     clearTyping(t.id);
     currentReplyTarget = null;
