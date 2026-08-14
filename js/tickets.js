@@ -372,7 +372,12 @@ function editTicketById(id) {
     currentRole === 'supervisor' ? 'inline-flex' : 'none';
   document.getElementById('save-btn').textContent    = 'Save Changes';
   document.getElementById('f-contact').value         = t.contactMethod || '';
-  document.getElementById('f-identifier').value      = t.identifier || '';
+  document.getElementById('f-identifier').value      = t.identifier ||
+    (t.phoneNumber
+      ? (tickets
+          .filter(x => x.phoneNumber === t.phoneNumber && x.id !== t.id && x.identifier)
+          .sort((a, b) => ticketActivityTime(b) - ticketActivityTime(a))[0]?.identifier || '')
+      : '');
   document.getElementById('f-issue').value           = t.issueType || '';
   document.getElementById('f-description').value     = t.description || '';
   document.getElementById('f-date').value            = t.dateReceived || '';
@@ -645,7 +650,29 @@ function viewTicket(id) {
                     : '✍️ Manual';
   const canReplyByWhatsApp = t.contactMethod === 'WhatsApp' && !!t.phoneNumber;
   const suggestedReply = `Thank you for contacting the Polmed Connect Helpdesk. Your ticket reference is ${t.ticketId}. We will follow up with you shortly.`;
+
+  // ── Returning-member detection ────────────────────────────────────────────
+  // Uses the phone number purely as an internal matching key — the number
+  // itself is never rendered anywhere below, only a count and, if available,
+  // the member's own stated identifier from a past ticket.
+  let returningMemberNote = '';
+  if (t.phoneNumber) {
+    const priorTickets = tickets
+      .filter(x => x.phoneNumber === t.phoneNumber && x.id !== t.id)
+      .sort((a, b) => ticketActivityTime(b) - ticketActivityTime(a));
+    if (priorTickets.length > 0) {
+      const priorWithId = priorTickets.find(x => x.identifier);
+      returningMemberNote = `
+        <div class="detail-section" style="margin-bottom:10px">
+          <div style="display:inline-flex;align-items:center;gap:6px;background:#EEF2FF;color:#4338CA;border:1px solid #C7D2FE;border-radius:8px;padding:6px 12px;font-size:12.5px;font-weight:500">
+            🔁 Returning member — ${priorTickets.length} previous ticket${priorTickets.length === 1 ? '' : 's'}
+            ${priorWithId ? ` · usually identifies as <strong>${escapeHtml(priorWithId.identifier)}</strong>` : ''}
+          </div>
+        </div>`;
+    }
+  }
   document.getElementById('detail-body').innerHTML = `
+    ${returningMemberNote}
     <div class="detail-grid">
       <div class="detail-item"><label>Contact Method</label><span>${escapeHtml(t.contactMethod) || '—'}</span></div>
       <div class="detail-item"><label>Member Identifier</label><span>${escapeHtml(t.identifier) || '—'}</span></div>
