@@ -24,6 +24,7 @@ const verifyToken   = process.env.WHATSAPP_VERIFY_TOKEN;
 const appSecret     = process.env.WHATSAPP_APP_SECRET;
 const projectId     = process.env.FIREBASE_PROJECT_ID;
 const accessToken   = process.env.WHATSAPP_ACCESS_TOKEN;
+const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
 const graphVersion  = 'v21.0';
 
 const mailgunApiKey = process.env.MAILGUN_SIGNING_KEY;
@@ -134,6 +135,25 @@ function checkSignature(event) {
   return { ok: crypto.timingSafeEqual(receivedBuf, expectedBuf), reason: 'mismatch' };
 }
 
+async function markMessageAsRead(messageId) {
+  if (!messageId || !accessToken || !phoneNumberId) return;
+  try {
+    await fetch(
+      `https://graph.facebook.com/${graphVersion}/${phoneNumberId}/messages`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ messaging_product: 'whatsapp', status: 'read', message_id: messageId })
+      }
+    );
+  } catch (err) {
+    console.error('Could not mark message as read:', err.message);
+  }
+}
+
 // ── Media handling ────────────────────────────────────────────────────────────
 const MEDIA_TYPES = ['image', 'video', 'audio', 'document', 'sticker'];
 
@@ -202,8 +222,8 @@ exports.handler = async function (event) {
 
   const change  = body?.entry?.[0]?.changes?.[0];
   const message = change?.value?.messages?.[0];
-
   if (!message) return { statusCode: 200, body: 'Not a message event' };
+  await markMessageAsRead(message?.id);
 
   const sender = message?.from || 'unknown';
   const waMessageId = message?.id || null;
