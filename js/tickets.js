@@ -6,7 +6,7 @@ const isConfigured = firebaseConfig.apiKey && !firebaseConfig.apiKey.startsWith(
 // ── Firebase module imports ───────────────────────────────────────────────────
 let initializeApp, getAuth, onAuthStateChanged, fbSignOut;
 let getFirestore, collection, addDoc, updateDoc, deleteDoc, doc,
-    onSnapshot, query, orderBy, serverTimestamp, Timestamp, getDoc, setDoc;
+    onSnapshot, query, orderBy, serverTimestamp, Timestamp, getDoc, setDoc, arrayUnion;
 
 if (!isConfigured) {
   const mock = await import('./local-firebase-mock.js');
@@ -14,6 +14,8 @@ if (!isConfigured) {
     initializeApp, getAuth, onAuthStateChanged,
     getFirestore, collection, addDoc, updateDoc, deleteDoc, doc,
     onSnapshot, query, orderBy, serverTimestamp, Timestamp, getDoc, setDoc,
+    arrayUnion, // ← NEW: local-firebase-mock.js must export this too, or audit
+                //   logging (and ticket saves in general) will throw in demo mode.
     signOut: fbSignOut
   } = mock);
 } else {
@@ -37,6 +39,7 @@ if (!isConfigured) {
   Timestamp        = fsMod.Timestamp;
   getDoc           = fsMod.getDoc;
   setDoc           = fsMod.setDoc;
+  arrayUnion       = fsMod.arrayUnion; // ← NEW
 }
 
 const app  = initializeApp(firebaseConfig);
@@ -487,6 +490,45 @@ function closeModal() {
   document.getElementById('ticket-overlay').classList.remove('open');
 }
 
+// ── Audit trail (who changed what, and when) ─────────────────────────────────
+// Not shown anywhere in the UI yet — this just records the data so it's
+// available later. Only fields that actually changed are logged, so the
+// trail stays compact rather than repeating the whole form on every save.
+const AUDIT_FIELDS = {
+  contactMethod:          'Contact Method',
+  identifier:              'Member Identifier',
+  issueType:               'Issue Type',
+  description:             'Description',
+  dateReceived:            'Date Received',
+  timeReceived:            'Time Received',
+  status:                  'Status',
+  timeToFirstResponse:     'Time to First Response',
+  resolutionTime:          'Resolution Time',
+  rtInHours:                'RT (hours)',
+  resolutionDescription:    'Resolution Notes'
+};
+
+// Firestore rejects `undefined` anywhere in a write, and treats '' / null /
+// undefined as meaningfully different values for our purposes — so we
+// collapse all three to null before comparing, otherwise an untouched empty
+// field would get logged as a "change" every single save.
+function normalizeAuditValue(v) {
+  if (v === undefined || v === '') return null;
+  return v;
+}
+
+function buildAuditChanges(oldTicket, newData) {
+  const changes = [];
+  for (const field of Object.keys(AUDIT_FIELDS)) {
+    const before = normalizeAuditValue(oldTicket ? oldTicket[field] : null);
+    const after  = normalizeAuditValue(newData[field]);
+    if (before !== after) {
+      changes.push({ field: AUDIT_FIELDS[field], from: before, to: after });
+    }
+  }
+  return changes;
+}
+
 async function saveTicket() {
   const contactMethod = document.getElementById('f-contact').value;
   const issueType     = document.getElementById('f-issue').value;
@@ -516,12 +558,30 @@ async function saveTicket() {
   btn.textContent = 'Saving…';
   try {
     if (editingId) {
+      const oldTicket = tickets.find(x => x.id === editingId);
+      const changes = buildAuditChanges(oldTicket, data);
+      if (changes.length > 0) {
+        // arrayUnion appends one entry to the ticket's own audit history —
+        // note serverTimestamp() can't be used *inside* an arrayUnion
+        // element (Firestore rejects it there), so we record a plain
+        // client-generated ISO timestamp for changedAt instead.
+        data.auditLog = arrayUnion({
+          changedBy: currentUser.email,
+          changedAt: new Date().toISOString(),
+          changes
+        });
+      }
       await updateDoc(doc(db, 'tickets', editingId), data);
     } else {
       data.ticketId  = genTicketId();
       data.createdBy = currentUser.email;
       data.createdAt = serverTimestamp();
       data.source    = 'manual';
+      data.auditLog  = [{
+        changedBy: currentUser.email,
+        changedAt: new Date().toISOString(),
+        changes: [{ field: 'Ticket', from: null, to: 'Created' }]
+      }];
       await addDoc(collection(db, 'tickets'), data);
     }
     formDirty = false;
@@ -541,6 +601,17 @@ async function deleteTicket() {
   }
   if (!confirm('Permanently delete this ticket? This cannot be undone.')) return;
   try {
+    // Preserve a record of the deletion (who, when, and the ticket's final
+    // state) in a separate collection, since the ticket document itself —
+    // and anything stored only on it, like auditLog — is about to be
+    // permanently removed and would otherwise vanish with it.
+    const t = tickets.find(x => x.id === editingId);
+    await setDoc(doc(db, 'deletionLog', editingId), {
+      ticketId:   t?.ticketId || editingId,
+      deletedBy:  currentUser.email,
+      deletedAt:  serverTimestamp(),
+      finalState: t || null
+    });
     await deleteDoc(doc(db, 'tickets', editingId));
     closeModal();
   } catch (e) {

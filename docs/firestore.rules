@@ -30,5 +30,18 @@ service cloud.firestore {
       allow read:  if isAgent();
       allow write: if false;
     }
+
+    // Deletion audit trail — a record of who deleted a ticket, when, and
+    // its final state, written client-side at the moment of deletion (only
+    // supervisors can ever reach that code path, since deleteTicket() itself
+    // is gated by currentRole === 'supervisor'). Immutable once written —
+    // nobody, including supervisors, can edit or remove an entry after the
+    // fact, so it stays a trustworthy record.
+    match /deletionLog/{ticketId} {
+      allow read:   if isAgent();
+      allow create: if isSupervisor();
+      allow update: if false;
+      allow delete: if false;
+    }
   }
 }
