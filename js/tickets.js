@@ -1348,6 +1348,94 @@ function renderResolutionChart(subset) {
 
 function updateReportPeriod() { renderReports(); }
 
+// ── Stats export (CSV) ────────────────────────────────────────────────────────
+// Respects whatever period is currently selected in the Reports page filter.
+// Recomputes everything independently of the existing render*Chart functions,
+// so this can't affect the on-screen charts/cards.
+function csvEscape(v) {
+  const s = (v === null || v === undefined) ? '' : String(v);
+  if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+window.downloadStatsCSV = function () {
+  const period       = document.getElementById('report-period')?.value || 'all';
+  const periodLabel  = document.getElementById('report-period')?.selectedOptions?.[0]?.textContent || period;
+  const subset       = applyPeriodFilter(tickets, period);
+
+  const total    = subset.length;
+  const handled  = subset.filter(t => t.status === 'Resolved' || t.status === 'Redirected').length;
+  const rtValues = subset.filter(t => t.rtInHours > 0 && t.status === 'Resolved').map(t => t.rtInHours);
+  const avgRT    = rtValues.length ? (rtValues.reduce((a, b) => a + b, 0) / rtValues.length).toFixed(1) : '';
+  const resRate  = total ? Math.round((handled / total) * 100) : 0;
+
+  const rows = [];
+  rows.push(['Polmed Connect Helpdesk — Report Export']);
+  rows.push(['Period', periodLabel]);
+  rows.push(['Generated', new Date().toLocaleString()]);
+  rows.push([]);
+
+  rows.push(['KPI', 'Value']);
+  rows.push(['Total Tickets', total]);
+  rows.push(['Avg Resolution Time (hrs)', avgRT]);
+  rows.push(['Resolution Rate (%)', total ? resRate : '']);
+  rows.push(['WhatsApp', subset.filter(t => t.contactMethod === 'WhatsApp').length]);
+  rows.push(['Email', subset.filter(t => t.contactMethod === 'Email').length]);
+  rows.push(['Phone call', subset.filter(t => t.contactMethod === 'Phone call').length]);
+  rows.push(['In person', subset.filter(t => t.contactMethod === 'In person').length]);
+  rows.push([]);
+
+  rows.push(['Issue Type Breakdown']);
+  rows.push(['Issue Type', 'Count']);
+  const issueCounts = {};
+  subset.forEach(t => {
+    const k = t.issueType || 'Unspecified';
+    issueCounts[k] = (issueCounts[k] || 0) + 1;
+  });
+  Object.entries(issueCounts).sort((a, b) => b[1] - a[1]).forEach(([label, val]) => rows.push([label, val]));
+  rows.push([]);
+
+  rows.push(['Status Breakdown']);
+  rows.push(['Status', 'Count']);
+  ['New', 'In Progress', 'Resolved', 'Redirected', 'Unresolved'].forEach(s => {
+    rows.push([s, subset.filter(t => t.status === s).length]);
+  });
+  rows.push([]);
+
+  rows.push(['Resolution Time Buckets (Resolved tickets only)']);
+  rows.push(['Bucket', 'Count']);
+  const resolvedForBuckets = subset.filter(t => t.status === 'Resolved' && typeof t.rtInHours === 'number' && t.rtInHours > 0);
+  const buckets = [
+    { label: 'Under 1 hour',  test: h => h < 1 },
+    { label: '1–4 hours',     test: h => h >= 1 && h < 4 },
+    { label: '4–24 hours',    test: h => h >= 4 && h < 24 },
+    { label: 'Over 24 hours', test: h => h >= 24 },
+  ];
+  buckets.forEach(b => rows.push([b.label, resolvedForBuckets.filter(t => b.test(t.rtInHours)).length]));
+
+  const csv  = rows.map(r => r.map(csvEscape).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  const stamp = new Date().toISOString().split('T')[0];
+  a.href = url;
+  a.download = `polmed-helpdesk-stats-${period}-${stamp}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
+
+// ── Stats export (PDF) ──────────────────────────────────────────────────────
+// Uses the browser's native print-to-PDF instead of a charting/PDF library —
+// no new dependency, and the output matches exactly what's on screen (same
+// KPI cards, same charts) for whatever period is selected. The layout for
+// this (hiding everything except the report) is handled by the @media print
+// rule added to app.css.
+window.downloadStatsPDF = function () {
+  window.print();
+};
+
 document.addEventListener('DOMContentLoaded', () => {
   const ticketOverlay = document.getElementById('ticket-overlay');
   if (ticketOverlay) {

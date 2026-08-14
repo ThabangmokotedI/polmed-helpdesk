@@ -151,14 +151,16 @@
       <!-- ===== REPORTS PAGE ===== -->
       <section id="page-reports" style="display:none">
         <div class="report-top-bar">
-          <label for="report-period" class="report-period-label">Period:</label>
-          <select id="report-period" onchange="updateReportPeriod()">
+          <label for="report-period" class="report-period-label no-print">Period:</label>
+          <select id="report-period" class="no-print" onchange="updateReportPeriod()">
             <option value="all">All time</option>
             <option value="this-month">This month</option>
             <option value="last-month">Last month</option>
             <option value="last-3">Last 3 months</option>
             <option value="last-6">Last 6 months</option>
           </select>
+    <button type="button" class="btn btn-sm no-print" onclick="downloadStatsCSV()">⬇ Download CSV</button>
+    <button type="button" class="btn btn-sm no-print" onclick="downloadStatsPDF()">⬇ Download PDF</button>
         </div>
 
         <!-- KPI cards -->
