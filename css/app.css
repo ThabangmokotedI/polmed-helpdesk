@@ -762,10 +762,34 @@ body {
   animation: modal-pop-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .overlay.open,
-  .overlay.open .modal {
-    animation: none;
+@media (max-width: 500px) {
+  .table-head { display: none; }
+
+  .table-row {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 14px 16px;
+  }
+
+  .table-row .td,
+  .table-row .th {
+    display: block;
+    width: 100%;
+    padding: 0;
+  }
+
+  .table-row .td.desc {
+    white-space: normal;
+    max-width: 100%;
+    overflow: visible;
+    text-overflow: unset;
+  }
+
+  .table-row .td.actions {
+    justify-content: flex-start;
+    margin-top: 4px;
   }
 }
 
