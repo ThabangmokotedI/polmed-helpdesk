@@ -200,6 +200,72 @@ async function sendIssueTypeList(phoneNumber) {
   }
 }
 
+// South African public holidays for 2026 (source: gov.za). This list needs
+// a manual refresh every year — Good Friday/Family Day move with Easter,
+// and any holiday landing on a Sunday shifts the following Monday to a
+// holiday too (per the Public Holidays Act). Saturdays do NOT shift.
+const SA_PUBLIC_HOLIDAYS_2026 = [
+  '2026-01-01', // New Year's Day
+  '2026-03-21', // Human Rights Day
+  '2026-04-03', // Good Friday
+  '2026-04-06', // Family Day
+  '2026-04-27', // Freedom Day
+  '2026-05-01', // Workers' Day
+  '2026-06-16', // Youth Day
+  '2026-08-09', // National Women's Day
+  '2026-08-10', // National Women's Day observed (falls on a Sunday)
+  '2026-09-24', // Heritage Day
+  '2026-12-16', // Day of Reconciliation
+  '2026-12-25', // Christmas Day
+  '2026-12-26', // Day of Goodwill
+];
+
+function isWithinBusinessHours(date) {
+  // Shift to SAST (UTC+2, no daylight saving) and read wall-clock time via
+  // the UTC getters on the shifted date — a standard trick that works
+  // correctly year-round since South Africa never changes its offset.
+  const sast = new Date(date.getTime() + 2 * 60 * 60 * 1000);
+  const day = sast.getUTCDay(); // 0 = Sunday ... 6 = Saturday
+  if (day === 0 || day === 6) return false;
+  const minutesSinceMidnight = sast.getUTCHours() * 60 + sast.getUTCMinutes();
+  if (minutesSinceMidnight < 8 * 60 || minutesSinceMidnight >= 17 * 60) return false;
+  const dateStr = sast.toISOString().split('T')[0];
+  if (SA_PUBLIC_HOLIDAYS_2026.includes(dateStr)) return false;
+  return true;
+}
+
+async function sendAfterHoursMessage(phoneNumber) {
+  if (!accessToken || !phoneNumberId) return;
+  const text = "Thanks for messaging Polmed Connect Helpdesk! Our agents are available Monday–Friday, 08:00–17:00 (SA time), and we're currently offline.\n\n" +
+    "To help us assist you faster once we're back, please reply with:\n" +
+    "1. A description of what you're struggling with in the Polmed Connect app\n" +
+    "2. Your membership number\n" +
+    "3. Your ID number\n" +
+    "4. Your email address\n\n" +
+    "We'll follow up as soon as we're back online.";
+  try {
+    await fetch(
+      `https://graph.facebook.com/${graphVersion}/${phoneNumberId}/messages`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: phoneNumber,
+          type: 'text',
+          text: { body: text }
+        })
+      }
+    );
+  } catch (err) {
+    console.error('Could not send after-hours message:', err.message);
+  }
+}
+
 // ── Media handling ────────────────────────────────────────────────────────────
 const MEDIA_TYPES = ['image', 'video', 'audio', 'document', 'sticker'];
 
