@@ -382,38 +382,60 @@ exports.handler = async function (event) {
   try {
     const db = admin.firestore();
 
-    const existingSnap = await db.collection('tickets')
+    // Continuation suggestion: doesn't auto-merge or auto-reopen anything.
+    // A still-open ticket (New/In Progress) is threaded onto exactly as
+    // before. If the sender's most recent ticket was closed (Resolved/
+    // Unresolved/Redirected) within the last 30 days, we tag the new
+    // ticket about to be created with a pointer to it, so the dashboard
+    // can ask the agent to confirm whether it's a continuation.
+    const CONTINUATION_STATUSES  = ['Resolved', 'Unresolved', 'Redirected'];
+    const CONTINUATION_WINDOW_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+    let continuationSuggestion = null;
+
+    const recentSnap = await db.collection('tickets')
       .where('phoneNumber', '==', sender)
-      .where('status', 'in', OPEN_STATUSES)
       .orderBy('createdAt', 'desc')
       .limit(1)
       .get();
 
-    if (!existingSnap.empty) {
-      const ticketDoc = existingSnap.docs[0];
+    if (!recentSnap.empty) {
+      const ticketDoc  = recentSnap.docs[0];
       const ticketData = ticketDoc.data();
 
-      const newEntry = {
-        from: 'member',
-        text,
-        mediaPath,
-        mediaType,
-        waMessageId,
-        at: now.toISOString()
-      };
+      if (OPEN_STATUSES.includes(ticketData.status)) {
+        const newEntry = {
+          from: 'member',
+          text,
+          mediaPath,
+          mediaType,
+          waMessageId,
+          at: now.toISOString()
+        };
 
-      await ticketDoc.ref.update({
-        conversation: admin.firestore.FieldValue.arrayUnion(newEntry),
-        lastMemberMessage: text,
-        lastMemberMessageAt: admin.firestore.FieldValue.serverTimestamp(),
-        hasNewReply: true,
-        updatedBy: 'WhatsApp webhook',
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      });
+        await ticketDoc.ref.update({
+          conversation: admin.firestore.FieldValue.arrayUnion(newEntry),
+          lastMemberMessage: text,
+          lastMemberMessageAt: admin.firestore.FieldValue.serverTimestamp(),
+          hasNewReply: true,
+          updatedBy: 'WhatsApp webhook',
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
 
-      console.log('Appended to existing ticket:', ticketData.ticketId, 'from sender:', sender.slice(-4));
-      await recordHealth('ok');
-      return { statusCode: 200, body: JSON.stringify({ ok: true, ticketId: ticketData.ticketId, appended: true }) };
+        console.log('Appended to existing ticket:', ticketData.ticketId, 'from sender:', sender.slice(-4));
+        await recordHealth('ok');
+        return { statusCode: 200, body: JSON.stringify({ ok: true, ticketId: ticketData.ticketId, appended: true }) };
+      }
+
+      if (CONTINUATION_STATUSES.includes(ticketData.status)) {
+        const closedAtMs = ticketData.updatedAt?.toMillis ? ticketData.updatedAt.toMillis() : 0;
+        if (closedAtMs && (now.getTime() - closedAtMs) < CONTINUATION_WINDOW_MS) {
+          continuationSuggestion = {
+            ticketDocId: ticketDoc.id,
+            ticketId: ticketData.ticketId,
+            closedStatus: ticketData.status
+          };
+        }
+      }
     }
 
     const ticketId = `TKT-${ds}-WA-${ts}`;
