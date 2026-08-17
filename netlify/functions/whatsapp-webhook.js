@@ -476,7 +476,14 @@ exports.handler = async function (event) {
     };
 
     await db.collection('tickets').add(ticket);
-    await sendIssueTypeList(sender);
+    // Only fires on a genuinely new conversation (not on messages threaded
+    // onto an already-open ticket), so a member texting repeatedly at
+    // 2am doesn't get spammed with the after-hours notice every time.
+    if (isWithinBusinessHours(now)) {
+      await sendIssueTypeList(sender);
+    } else {
+      await sendAfterHoursMessage(sender);
+    }
     console.log('New ticket created:', ticketId, 'from sender:', sender.slice(-4), mediaType ? `(media: ${mediaType})` : '');
     await recordHealth('ok');
     return { statusCode: 200, body: JSON.stringify({ ok: true, ticketId }) };

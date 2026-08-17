@@ -337,12 +337,42 @@
             </h2>
             <div class="steps">
               <div class="step"><div class="step-n">1</div><div class="step-text">A member messages the WhatsApp helpdesk number with an app issue.</div></div>
-              <div class="step"><div class="step-n">2</div><div class="step-text">The webhook automatically creates a ticket from the incoming WhatsApp message with status <strong>New</strong>.</div></div>
-              <div class="step"><div class="step-n">3</div><div class="step-text">The ticket appears instantly in the system. Click it, review the original WhatsApp message, and fill in the missing fields: <strong>Issue Type</strong>, <strong>Description</strong>, and <strong>Status</strong>.</div></div>
-              <div class="step"><div class="step-n">4</div><div class="step-text">Use <strong>Copy reply</strong> to paste a reference reply back into WhatsApp for the member.</div></div>
-              <div class="step"><div class="step-n">5</div><div class="step-text">When resolved, update the ticket status to <strong>Resolved</strong>, fill in the resolution notes, and save.</div></div>
+              <div class="step"><div class="step-n">2</div><div class="step-text">During business hours (Mon–Fri, 08:00–17:00 SA time, excluding SA public holidays), a ticket is created with status <strong>New</strong> and the member gets an interactive list asking them to pick an issue type. Outside business hours, the ticket is still created, but the member instead gets an after-hours message asking them to describe their issue, membership number, ID number, and email so an agent can follow up once back online.</div></div>
+              <div class="step"><div class="step-n">3</div><div class="step-text">If the member picks an issue type from the list, it's filled in on the ticket automatically — always double-check it against what they actually wrote before relying on it.</div></div>
+              <div class="step"><div class="step-n">4</div><div class="step-text">The ticket appears instantly in the system. Click it, review the original message and any conversation so far, and fill in whatever's still missing: <strong>Issue Type</strong> (if not already set), <strong>Description</strong>, and <strong>Status</strong>.</div></div>
+              <div class="step"><div class="step-n">5</div><div class="step-text">Reply directly from the ticket with <strong>Send via WhatsApp</strong>. You can also attach a file (📎), quote a specific member message before replying (↩), or react to one of their messages with an emoji.</div></div>
+              <div class="step"><div class="step-n">6</div><div class="step-text">While you're typing a reply, other agents viewing the same ticket see an "already replying" notice, so two agents don't cross-reply to the same member.</div></div>
+              <div class="step"><div class="step-n">7</div><div class="step-text">When resolved, update the ticket status to <strong>Resolved</strong>, fill in the resolution notes, and save.</div></div>
             </div>
           </div>
+
+          <div class="guide-card">
+            <h2>Media, replies & reactions</h2>
+            <div class="steps">
+              <div class="step"><div class="step-n">1</div><div class="step-text">Photos, videos, voice notes, and documents a member sends are automatically downloaded and stored — nothing depends on WhatsApp's own temporary media links, which expire.</div></div>
+              <div class="step"><div class="step-n">2</div><div class="step-text">When you open a ticket, each attachment loads via a short-lived link generated at that moment — this is intentional, so a link copied into a log or chat elsewhere can't be used to view a member's photo indefinitely.</div></div>
+              <div class="step"><div class="step-n">3</div><div class="step-text">You can attach your own file when replying (📎 Attach file, up to 5MB), quote a specific member message before replying (↩ on that message), or send a quick emoji reaction without typing a reply at all.</div></div>
+            </div>
+          </div>
+
+          <div class="guide-card">
+            <h2>Continuation suggestion (merge flow)</h2>
+            <div class="steps">
+              <div class="step"><div class="step-n">1</div><div class="step-text">If a member's last ticket was closed within the past 30 days and they message again, the system does <strong>not</strong> automatically reopen it — it creates a new ticket as usual, but flags it.</div></div>
+              <div class="step"><div class="step-n">2</div><div class="step-text">Opening that new ticket shows a banner naming the earlier ticket and asking whether this message is a continuation of it.</div></div>
+              <div class="step"><div class="step-n">3</div><div class="step-text">Choosing <strong>Yes, merge</strong> moves the new message onto the original ticket, reopens it to <strong>In Progress</strong>, and marks the duplicate as <strong>Merged</strong>. Choosing <strong>No, keep separate</strong> just dismisses the banner and the new ticket proceeds normally.</div></div>
+            </div>
+          </div>
+
+          <div class="guide-card">
+            <h2>System health monitoring</h2>
+            <div class="steps">
+              <div class="step"><div class="step-n">1</div><div class="step-text">Every webhook run reports its status to the system, shown live as a red banner at the top of the dashboard if something's actually wrong (a config problem or a processing error).</div></div>
+              <div class="step"><div class="step-n">2</div><div class="step-text">A rejected request with a bad or forged signature is <strong>not</strong> treated as a system problem — that's the security check doing its job, not a fault, so it won't trigger a banner or an alert.</div></div>
+              <div class="step"><div class="step-n">3</div><div class="step-text">On a genuine problem, an alert email goes out automatically (rate-limited to once per 30 minutes, so a run of repeated failures doesn't flood the inbox).</div></div>
+            </div>
+          </div>
+
           <div class="guide-card">
             <h2>Email-to-ticket workflow</h2>
             <div class="steps">
@@ -351,13 +381,16 @@
               <div class="step"><div class="step-n">3</div><div class="step-text">Triage the ticket just like a WhatsApp one: fill in Issue Type, add your notes, update status.</div></div>
             </div>
           </div>
+
           <div class="guide-card">
-            <h2>WhatsApp label → Status mapping</h2>
+            <h2>Status colour reference</h2>
             <div class="label-map">
-              <div class="label-row"><span class="badge new">🟣 New</span><span>→</span><span class="badge new">New</span></div>
-              <div class="label-row"><span class="badge prog">🔵 In Progress</span><span>→</span><span class="badge prog">In Progress</span></div>
-              <div class="label-row"><span class="badge res">🟢 Resolved</span><span>→</span><span class="badge res">Resolved</span></div>
-              <div class="label-row"><span class="badge unres">🔴 Unresolved</span><span>→</span><span class="badge unres">Unresolved</span></div>
+              <div class="label-row"><span class="badge new">New</span></div>
+              <div class="label-row"><span class="badge prog">In Progress</span></div>
+              <div class="label-row"><span class="badge res">Resolved</span></div>
+              <div class="label-row"><span class="badge redir">Redirected</span></div>
+              <div class="label-row"><span class="badge unres">Unresolved</span></div>
+              <div class="label-row"><span class="badge">Merged <span style="font-size:11px;color:#888">(duplicate folded into another ticket — no colour yet)</span></span></div>
             </div>
           </div>
         </div>
