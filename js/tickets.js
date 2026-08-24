@@ -656,15 +656,13 @@ function viewTicket(id) {
   // Uses the phone number purely as an internal matching key — the number
   // itself is never rendered anywhere below, only a count and, if available,
   // the member's own stated identifier from a past ticket.
-    const anonymizedNote = t.anonymized ? `
+      const anonymizedNote = t.anonymized ? `
     <div class="detail-section" style="margin-bottom:10px">
       <div style="display:inline-flex;align-items:center;gap:6px;background:#F1F5F9;color:#475569;border:1px solid #CBD5E1;border-radius:8px;padding:6px 12px;font-size:12.5px;font-weight:500">
         🗄 Anonymized — personal data removed after 12 months per POPIA retention rules. Status and timing stats are preserved.
       </div>
     </div>` : '';
 
-  let returningMemberNote = '';
-  if (t.phoneNumber) {
   let returningMemberNote = '';
   if (t.phoneNumber) {
     const priorTickets = tickets
