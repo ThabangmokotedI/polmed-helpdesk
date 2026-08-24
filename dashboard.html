@@ -105,12 +105,14 @@
             <input type="text" id="search" placeholder="Search ticket ID, member number, issue…" oninput="filterTickets()">
           </div>
           <select id="filter-status" onchange="filterTickets()">
-            <option value="">All statuses</option>
-            <option>New</option>
-            <option>In Progress</option>
-            <option>Resolved</option>
-            <option>Redirected</option>
-            <option>Unresolved</option>
+            <!-- filter dropdown -->
+<option value="">All statuses</option>
+<option>New</option>
+<option>In Progress</option>
+<option>Stale</option>
+<option>Resolved</option>
+<option>Redirected</option>
+<option>Unresolved</option>
           </select>
           <select id="filter-contact" onchange="filterTickets()">
             <option value="">All channels</option>

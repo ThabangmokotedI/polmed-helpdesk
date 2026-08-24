@@ -455,7 +455,7 @@ exports.handler = async function (event) {
       }
     }
 
-    const ticket = {
+        const ticket = {
       ticketId,
       contactMethod: 'WhatsApp',
       source:        'whatsapp-webhook',
@@ -464,6 +464,7 @@ exports.handler = async function (event) {
       mediaPath:     finalMediaPath,
       mediaType,
       phoneNumber:   sender,
+      identifier: '',
       description:   '',
       issueType:     '',
       conversation:  [{ from: 'member', text, mediaPath: finalMediaPath, mediaType, waMessageId, at: now.toISOString() }],
