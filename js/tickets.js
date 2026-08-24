@@ -319,8 +319,9 @@ function renderTable(list) {
     const unreadDot = t.hasNewReply
       ? `<span class="unread-dot" title="New member reply" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#f59e0b;margin-right:6px;vertical-align:middle;box-shadow:0 0 0 2px rgba(245,158,11,0.25)"></span>`
       : '';
+        const anonTag = t.anonymized ? ` <span class="badge anon" title="Personal data removed after 12 months, per POPIA retention rules">Anonymized</span>` : '';
     return `<div class="table-row" onclick="viewTicket('${t.id}')">
-      <div class="td"><span class="tid-pill">${unreadDot}${escapeHtml(t.ticketId) || '—'}</span></div>
+      <div class="td"><span class="tid-pill">${unreadDot}${escapeHtml(t.ticketId) || '—'}</span>${anonTag}</div>
       <div class="td mono">${escapeHtml(t.identifier) || '—'}</div>
       <div class="td issue">${escapeHtml(t.issueType) || '—'}</div>
       <div class="td desc">${escapeHtml(t.description) || '—'}</div>
@@ -655,6 +656,15 @@ function viewTicket(id) {
   // Uses the phone number purely as an internal matching key — the number
   // itself is never rendered anywhere below, only a count and, if available,
   // the member's own stated identifier from a past ticket.
+    const anonymizedNote = t.anonymized ? `
+    <div class="detail-section" style="margin-bottom:10px">
+      <div style="display:inline-flex;align-items:center;gap:6px;background:#F1F5F9;color:#475569;border:1px solid #CBD5E1;border-radius:8px;padding:6px 12px;font-size:12.5px;font-weight:500">
+        🗄 Anonymized — personal data removed after 12 months per POPIA retention rules. Status and timing stats are preserved.
+      </div>
+    </div>` : '';
+
+  let returningMemberNote = '';
+  if (t.phoneNumber) {
   let returningMemberNote = '';
   if (t.phoneNumber) {
     const priorTickets = tickets
@@ -671,7 +681,8 @@ function viewTicket(id) {
         </div>`;
     }
   }
-  document.getElementById('detail-body').innerHTML = `
+    document.getElementById('detail-body').innerHTML = `
+    ${anonymizedNote}
     ${returningMemberNote}
     <div class="detail-grid">
       <div class="detail-item"><label>Contact Method</label><span>${escapeHtml(t.contactMethod) || '—'}</span></div>
