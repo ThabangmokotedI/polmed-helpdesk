@@ -94,7 +94,7 @@ The implementation is complete for the core ticketing workflow:
 | Description | Textarea | No | Initial request or summary |
 | Date Received | Date | Yes | Ticket received date |
 | Time Received | Time | No | Time of incoming request |
-| Status | Dropdown | Yes | New / In Progress / Resolved / Unresolved / Redirected |
+| Status | Dropdown | Yes | New / In Progress / Resolved / Unresolved / Redirected / Merged |
 | Resolution Description | Textarea | No | Required for resolved or closed tickets |
 | `fromEmail` / `phoneNumber` | String | No | Stored internally for webhook ticket provenance |
 
@@ -130,7 +130,7 @@ The UI currently supports these issue types:
 |---|---|
 | FR-07.1 | Search supports Ticket ID, member number, issue type, and description |
 | FR-07.2 | Filter by status, contact method, and issue type |
-| FR-07.3 | Dashboard supports status values `New`, `In Progress`, `Resolved`, `Redirected`, `Unresolved` |
+| FR-07.3 | Dashboard supports status values `New`, `In Progress`, `Resolved`, `Redirected`, `Unresolved`, `Merged` |
 
 ### FR-08: Dashboard Statistics
 | # | Requirement |

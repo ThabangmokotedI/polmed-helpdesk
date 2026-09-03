@@ -91,8 +91,15 @@ exports.handler = async function (event) {
   const fromEmail = (fromRaw.match(/<([^>]+)>/) || [, fromRaw])[1].trim();
 
   const now    = new Date();
-  const ds     = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
-  const ts     = `${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}`;
+  const received = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Africa/Harare', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+  }).formatToParts(now).reduce((result, part) => {
+    result[part.type] = part.value;
+    return result;
+  }, {});
+  const ds     = `${received.year}${received.month}${received.day}`;
+  const ts     = `${received.hour}${received.minute}${received.second}`;
   const ticketId = `TKT-${ds}-EM-${ts}`;
 
   // Truncate body to 2000 chars
@@ -109,8 +116,8 @@ exports.handler = async function (event) {
     identifier:    '',          // agent fills in member number during triage
     fromEmail,                  // stored for reference (internal use only — POPIA)
     recipient,
-    dateReceived:  now.toISOString().split('T')[0],
-    timeReceived:  now.toTimeString().split(' ')[0],
+    dateReceived:  `${received.year}-${received.month}-${received.day}`,
+    timeReceived:  `${received.hour}:${received.minute}:${received.second}`,
     createdBy:     'Email webhook',
     createdAt:     admin.firestore.FieldValue.serverTimestamp(),
     updatedBy:     'Email webhook',

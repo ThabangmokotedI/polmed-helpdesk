@@ -166,7 +166,6 @@ const ISSUE_TYPE_LIST_ROWS = [
   { id: 'Membership & documents', title: 'Membership & documents' },
   { id: 'Wellness tracker', title: 'Wellness tracker' },
   { id: 'Feature malfunction', title: 'Feature malfunction' },
-  { id: 'Huawei user', title: 'Huawei user' },
   { id: 'Not App Related', title: 'Not App Related' },
   { id: 'Unspecified / No Response', title: 'Unspecified / Other' }
 ];
@@ -232,6 +231,22 @@ function isWithinBusinessHours(date) {
   const dateStr = sast.toISOString().split('T')[0];
   if (SA_PUBLIC_HOLIDAYS_2026.includes(dateStr)) return false;
   return true;
+}
+
+function harareDateTimeParts(date) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Africa/Harare',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hourCycle: 'h23'
+  }).formatToParts(date).reduce((result, part) => {
+    result[part.type] = part.value;
+    return result;
+  }, {});
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    time: `${parts.hour}:${parts.minute}:${parts.second}`
+  };
 }
 
 async function sendAfterHoursMessage(phoneNumber) {
@@ -340,14 +355,15 @@ exports.handler = async function (event) {
   const sender = message?.from || 'unknown';
   const waMessageId = message?.id || null;
   const now    = new Date();
+  const received = harareDateTimeParts(now);
 
   let text     = message?.text?.body || '';
   let mediaPath = null;
   let mediaType = null;
   let selectedIssueType = null;
 
-  const ds = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
-  const ts = `${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}`;
+  const ds = received.date.replaceAll('-', '');
+  const ts = received.time.replaceAll(':', '');
   const tempIdForMedia = `TMP-${ds}-${ts}`;
 
   if (MEDIA_TYPES.includes(message.type)) {
@@ -455,6 +471,16 @@ exports.handler = async function (event) {
       }
     }
 
+        const incomingIdentifier = sender;
+        const resolvedWithSameIdentifier = incomingIdentifier
+          ? (await db.collection('tickets')
+              .where('identifier', '==', incomingIdentifier)
+              .get()).docs
+              .map(d => ({ doc: d, data: d.data() }))
+              .filter(item => item.data.status === 'Resolved')
+              .sort((a, b) => (b.data.createdAt?.toMillis?.() || 0) - (a.data.createdAt?.toMillis?.() || 0))[0]
+          : null;
+
         const ticket = {
       ticketId,
       contactMethod: 'WhatsApp',
@@ -464,17 +490,21 @@ exports.handler = async function (event) {
       mediaPath:     finalMediaPath,
       mediaType,
       phoneNumber:   sender,
-      identifier: '',
+      identifier: incomingIdentifier,
       description:   '',
       issueType:     '',
       conversation:  [{ from: 'member', text, mediaPath: finalMediaPath, mediaType, waMessageId, at: now.toISOString() }],
-      dateReceived:  now.toISOString().split('T')[0],
-      timeReceived:  now.toTimeString().split(' ')[0],
+      dateReceived:  received.date,
+      timeReceived:  received.time,
       createdBy:     'WhatsApp webhook',
       createdAt:     admin.firestore.FieldValue.serverTimestamp(),
       updatedBy:     'WhatsApp webhook',
       updatedAt:     admin.firestore.FieldValue.serverTimestamp()
     };
+
+    if (resolvedWithSameIdentifier) {
+      ticket.possibleDuplicateOf = resolvedWithSameIdentifier.data.ticketId;
+    }
 
     await db.collection('tickets').add(ticket);
     // Only fires on a genuinely new conversation (not on messages threaded

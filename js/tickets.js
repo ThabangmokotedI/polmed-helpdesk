@@ -10,6 +10,40 @@ const { initializeApp, getAuth, onAuthStateChanged, signOut: fbSignOut } = { ...
 const { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc,
         onSnapshot, query, orderBy, serverTimestamp, Timestamp, getDoc, setDoc, arrayUnion } = fsMod;
 
+const HARARE_TIME_ZONE = 'Africa/Harare';
+
+function formatHarareDateTime(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: HARARE_TIME_ZONE,
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  }).format(date);
+}
+
+function formatHarareDate(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: HARARE_TIME_ZONE,
+    year: 'numeric', month: '2-digit', day: '2-digit'
+  }).format(date);
+}
+
+function harareInputParts(date) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: HARARE_TIME_ZONE,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+  }).formatToParts(date).reduce((result, part) => {
+    result[part.type] = part.value;
+    return result;
+  }, {});
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    time: `${parts.hour}:${parts.minute}:${parts.second}`
+  };
+}
+
 const app  = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db   = getFirestore(app);
@@ -24,6 +58,9 @@ let formDirty   = false;
 // ── Global function exports ───────────────────────────────────────────────────
 window.filterTickets    = filterTickets;
 window.openNewTicket    = openNewTicket;
+  window.openContactMember = openContactMember;
+  window.closeContactMember = closeContactMember;
+  window.sendContactMember = sendContactMember;
 window.editTicketById   = editTicketById;
 window.closeModal       = closeModal;
 window.saveTicket       = saveTicket;
@@ -144,7 +181,7 @@ function listenToHealth() {
     const data = snap.data();
     const isProblem = data.lastStatus === 'config_error' || data.lastStatus === 'processing_error';
     if (isProblem) {
-      const when = data.lastErrorAt?.toDate ? data.lastErrorAt.toDate().toLocaleString() : '';
+      const when = data.lastErrorAt?.toDate ? formatHarareDateTime(data.lastErrorAt.toDate()) : '';
       banner.textContent = `⚠ WhatsApp webhook issue (${data.lastStatus}): ${data.lastErrorMessage || ''} — ${when}`;
       banner.style.display = 'block';
     } else {
@@ -249,6 +286,7 @@ function filterTickets() {
   const fs = document.getElementById('filter-status').value;
   const fc = document.getElementById('filter-contact').value;
   const fi = document.getElementById('filter-issue').value;
+  const sort = document.getElementById('sort-tickets')?.value || '';
   const filtered = tickets.filter(t => {
     const mQ = !q ||
       (t.ticketId    && t.ticketId.toLowerCase().includes(q))    ||
@@ -260,6 +298,13 @@ function filterTickets() {
     const mI = !fi || t.issueType === fi;
     return mQ && mS && mC && mI;
   });
+  if (sort) {
+    filtered.sort((a, b) => {
+      const aReceived = new Date(`${a.dateReceived || ''}T${a.timeReceived || '00:00:00'}`).getTime();
+      const bReceived = new Date(`${b.dateReceived || ''}T${b.timeReceived || '00:00:00'}`).getTime();
+      return sort === 'received-asc' ? aReceived - bReceived : bReceived - aReceived;
+    });
+  }
   renderTable(filtered);
 }
 
@@ -278,7 +323,7 @@ function renderTable(list) {
   el.innerHTML = list.map(t => {
     const badge = statusBadge(t.status);
     const ch    = contactIcon(t.contactMethod);
-    const date  = t.dateReceived || (t.createdAt?.toDate ? t.createdAt.toDate().toLocaleDateString('en-ZA') : '—');
+    const date  = t.dateReceived || (t.createdAt?.toDate ? formatHarareDate(t.createdAt.toDate()) : '—');
     const unreadDot = t.hasNewReply
       ? `<span class="unread-dot" title="New member reply" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#f59e0b;margin-right:6px;vertical-align:middle;box-shadow:0 0 0 2px rgba(245,158,11,0.25)"></span>`
       : '';
@@ -290,10 +335,11 @@ function renderTable(list) {
       <div class="td desc">${escapeHtml(t.description) || '—'}</div>
       <div class="td">${ch} ${escapeHtml(t.contactMethod) || '—'}</div>
       <div class="td date">${escapeHtml(date)}</div>
+      <div class="td date">${escapeHtml(t.timeReceived) || '—'}</div>
       <div class="td">${badge}</div>
       <div class="td actions">
         <button class="row-edit-btn" onclick="event.stopPropagation();editTicketById('${t.id}')">
-          ${t.status === 'New' ? 'Triage' : 'Edit'}
+          Edit
         </button>
       </div>
     </div>`;
@@ -319,9 +365,64 @@ function openNewTicket() {
   document.getElementById('delete-btn').style.display = 'none';
   document.getElementById('save-btn').textContent    = 'Log Ticket';
   clearForm();
-  document.getElementById('f-date').value = new Date().toISOString().split('T')[0];
+  const received = harareInputParts(new Date());
+  document.getElementById('f-date').value = received.date;
+  document.getElementById('f-time').value = received.time;
   document.getElementById('ticket-overlay').classList.add('open');
   formDirty = false;
+}
+
+function openContactMember() {
+  document.getElementById('contact-phone').value = '';
+  document.getElementById('contact-name').value = '';
+  document.getElementById('contact-note').value = '';
+  document.getElementById('contact-member-result').textContent = '';
+  document.getElementById('contact-member-overlay').classList.add('open');
+}
+
+function closeContactMember() {
+  document.getElementById('contact-member-overlay').classList.remove('open');
+}
+
+async function sendContactMember() {
+  const phoneNumber = document.getElementById('contact-phone').value.trim();
+  const memberName = document.getElementById('contact-name').value.trim();
+  const note = document.getElementById('contact-note').value.trim();
+  const resultEl = document.getElementById('contact-member-result');
+  const btn = document.getElementById('contact-member-send');
+  if (!phoneNumber || !note) {
+    resultEl.textContent = 'Phone number and reason/note are required.';
+    resultEl.className = 'contact-member-result error';
+    return;
+  }
+  if (!currentUser) {
+    resultEl.textContent = 'You are not signed in. Please refresh and try again.';
+    resultEl.className = 'contact-member-result error';
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  resultEl.textContent = '';
+  try {
+    const idToken = await currentUser.getIdToken();
+    const res = await fetch('/.netlify/functions/start-whatsapp-conversation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+      body: JSON.stringify({ phoneNumber, memberName, note })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error?.error?.message || data.error || 'Could not start conversation.');
+    resultEl.textContent = `Message sent and ticket ${data.ticketId} created.`;
+    resultEl.className = 'contact-member-result success';
+    document.getElementById('contact-phone').value = '';
+    document.getElementById('contact-name').value = '';
+    document.getElementById('contact-note').value = '';
+  } catch (err) {
+    resultEl.textContent = err.message;
+    resultEl.className = 'contact-member-result error';
+  }
+  btn.disabled = false;
+  btn.textContent = 'Send';
 }
 
 function editTicketById(id) {
@@ -614,6 +715,23 @@ function viewTicket(id) {
                     : '✍️ Manual';
   const canReplyByWhatsApp = t.contactMethod === 'WhatsApp' && !!t.phoneNumber;
   const suggestedReply = `Thank you for contacting the POLMED Connect Helpdesk. Your ticket reference is ${t.ticketId}. We will follow up with you shortly.`;
+  const possibleDuplicate = t.possibleDuplicateOf && !t.possibleDuplicateReviewed
+    ? tickets.find(x => x.ticketId === t.possibleDuplicateOf)
+    : null;
+  const duplicateBanner = possibleDuplicate ? `
+    <div class="duplicate-banner" role="alert">
+      <strong>Possible duplicate</strong>
+      <p>Is this a continuation of ticket <strong>${escapeHtml(possibleDuplicate.ticketId)}</strong>?</p>
+      <div class="duplicate-comparison">
+        <div><strong>Earlier ticket:</strong> ${escapeHtml(possibleDuplicate.description || possibleDuplicate.message) || 'No description'}</div>
+        <div><strong>Status:</strong> ${escapeHtml(possibleDuplicate.status) || '—'} · <strong>Received:</strong> ${escapeHtml(possibleDuplicate.dateReceived) || '—'} ${escapeHtml(possibleDuplicate.timeReceived) || ''}</div>
+      </div>
+      <div class="duplicate-actions">
+        <button type="button" class="btn btn-primary btn-sm" onclick="mergeDuplicateTicket('${t.id}')">Yes, merge</button>
+        <button type="button" class="btn btn-sm" onclick="dismissPossibleDuplicate('${t.id}')">No, keep separate</button>
+        <button type="button" class="btn btn-sm" onclick="viewTicket('${possibleDuplicate.id}')">View earlier ticket</button>
+      </div>
+    </div>` : '';
 
   // ── Returning-member detection ────────────────────────────────────────────
   // Uses the phone number purely as an internal matching key — the number
@@ -645,6 +763,7 @@ function viewTicket(id) {
     document.getElementById('detail-body').innerHTML = `
     ${anonymizedNote}
     ${returningMemberNote}
+      ${duplicateBanner}
     <div class="detail-grid">
       <div class="detail-item"><label>Contact Method</label><span>${escapeHtml(t.contactMethod) || '—'}</span></div>
       <div class="detail-item"><label>Member Identifier</label><span>${escapeHtml(t.identifier) || '—'}</span></div>
@@ -712,6 +831,105 @@ function viewTicket(id) {
     updateDoc(doc(db, 'tickets', id), ticketUpdates).catch(() => {});
   }
 }
+
+window.dismissPossibleDuplicate = async function (ticketDocId) {
+  try {
+    await updateDoc(doc(db, 'tickets', ticketDocId), {
+      possibleDuplicateReviewed: true,
+      possibleDuplicateDecision: 'separate',
+      updatedAt: serverTimestamp()
+    });
+  } catch (err) {
+    alert('Could not dismiss duplicate warning: ' + err.message);
+  }
+};
+
+window.mergeDuplicateTicket = async function (duplicateDocId) {
+  const duplicate = tickets.find(x => x.id === duplicateDocId);
+  const original = duplicate?.possibleDuplicateOf
+    ? tickets.find(x => x.ticketId === duplicate.possibleDuplicateOf)
+    : null;
+  if (!duplicate || !original) return;
+  if (!confirm(`Merge ${duplicate.ticketId} into ${original.ticketId}?`)) return;
+
+  const mergeId = `${duplicate.ticketId}-${Date.now()}`;
+  const mergedAt = new Date().toISOString();
+  const originalEntries = Array.isArray(duplicate.conversation) ? duplicate.conversation : [];
+  const movedEntries = originalEntries.map((entry, index) => ({
+    ...entry,
+    mergeId,
+    mergedAt: new Date(Date.parse(mergedAt) + index).toISOString(),
+    originalAt: entry.at
+  }));
+  const marker = {
+    type: 'merge-divider',
+    mergeId,
+    mergedTicketDocId: duplicate.id,
+    mergedTicketId: duplicate.ticketId,
+    at: mergedAt,
+    text: `Merged from ${duplicate.ticketId} on ${formatHarareDateTime(new Date(mergedAt))}`
+  };
+  try {
+    await updateDoc(doc(db, 'tickets', original.id), {
+      conversation: [...(Array.isArray(original.conversation) ? original.conversation : []), marker, ...movedEntries],
+      status: 'In Progress',
+      updatedAt: serverTimestamp(),
+      updatedBy: currentUser.email
+    });
+    await updateDoc(doc(db, 'tickets', duplicate.id), {
+      conversation: [],
+      status: 'Merged',
+      mergedConversation: originalEntries,
+      mergedIntoPreviousStatus: original.status,
+      mergedFromStatus: duplicate.status,
+      mergedIntoTicketId: original.ticketId,
+      mergedIntoTicketDocId: original.id,
+      mergeId,
+      mergedAt,
+      possibleDuplicateReviewed: true,
+      possibleDuplicateDecision: 'merged',
+      updatedAt: serverTimestamp(),
+      updatedBy: currentUser.email
+    });
+    closeDetail();
+  } catch (err) {
+    alert('Could not merge tickets: ' + err.message);
+  }
+};
+
+window.undoMerge = async function (duplicateDocId, mergeId) {
+  const duplicate = tickets.find(x => x.id === duplicateDocId);
+  const original = duplicate?.mergedIntoTicketDocId ? tickets.find(x => x.id === duplicate.mergedIntoTicketDocId) : null;
+  if (!duplicate || !original || duplicate.mergeId !== mergeId) return;
+  if (!confirm(`Undo the merge of ${duplicate.ticketId}?`)) return;
+  const restoredOriginalConversation = (Array.isArray(original.conversation) ? original.conversation : [])
+    .filter(entry => entry.mergeId !== mergeId);
+  try {
+    await updateDoc(doc(db, 'tickets', original.id), {
+      conversation: restoredOriginalConversation,
+      status: duplicate.mergedIntoPreviousStatus || 'Resolved',
+      updatedAt: serverTimestamp(),
+      updatedBy: currentUser.email
+    });
+    await updateDoc(doc(db, 'tickets', duplicate.id), {
+      conversation: duplicate.mergedConversation || [],
+      status: duplicate.mergedFromStatus || 'New',
+      mergedConversation: null,
+      mergedFromStatus: null,
+      mergedIntoTicketId: null,
+      mergedIntoTicketDocId: null,
+      mergeId: null,
+      mergedAt: null,
+      possibleDuplicateReviewed: true,
+      possibleDuplicateDecision: 'merged-undone',
+      updatedAt: serverTimestamp(),
+      updatedBy: currentUser.email
+    });
+    closeDetail();
+  } catch (err) {
+    alert('Could not undo merge: ' + err.message);
+  }
+};
 
 // ── Media rendering (images, video, voice notes, other files) ───────────────
 // PRIORITY FIX #3: media is no longer referenced by a permanent URL. Each
@@ -928,11 +1146,17 @@ function renderConversation(id) {
     return;
   }
 
-  const sorted = [...convo].sort((a, b) => new Date(a.at) - new Date(b.at));
+  const sorted = [...convo].sort((a, b) => new Date(a.mergedAt || a.at) - new Date(b.mergedAt || b.at));
 
   el.innerHTML = sorted.map(entry => {
+    if (entry.type === 'merge-divider') {
+      return `<div class="convo-merge-divider">
+        <span>— ${escapeHtml(entry.text)} —</span>
+        <button type="button" class="convo-undo-merge" onclick="undoMerge('${entry.mergedTicketDocId}', '${entry.mergeId}')">Undo merge</button>
+      </div>`;
+    }
     const isAgent = entry.from === 'agent';
-    const when = entry.at ? new Date(entry.at).toLocaleString() : '';
+    const when = entry.at ? formatHarareDateTime(new Date(entry.originalAt || entry.at)) : '';
 
     if (isAgent && entry.isReaction) {
       return `<div class="convo-reaction-line">${escapeHtml(when)} — ${escapeHtml(entry.text)}</div>`;
@@ -1111,7 +1335,7 @@ async function signOut() {
 
 // ── Badges / icons ────────────────────────────────────────────────────────────
 function statusBadge(s) {
-  const map = { 'New': 'new', 'Resolved': 'res', 'In Progress': 'prog', 'Unresolved': 'unres', 'Redirected': 'redir' };
+  const map = { 'New': 'new', 'Resolved': 'res', 'In Progress': 'prog', 'Unresolved': 'unres', 'Redirected': 'redir', 'Merged': 'merged' };
   return `<span class="badge ${map[s] || ''}">${escapeHtml(s) || '—'}</span>`;
 }
 function contactIcon(c) {
@@ -1207,7 +1431,11 @@ function renderMonthlyChart(subset) {
     d.setDate(1);
     d.setMonth(d.getMonth() - i);
     const key   = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    const label = d.toLocaleString('default', { month: 'short', year: '2-digit' });
+    const label = new Intl.DateTimeFormat('en-GB', {
+      timeZone: HARARE_TIME_ZONE,
+      month: 'short',
+      year: '2-digit'
+    }).format(d);
     const count = subset.filter(t => {
       const td = ticketDate(t);
       if (!td) return false;
@@ -1371,7 +1599,7 @@ window.downloadStatsCSV = function () {
   const rows = [];
   rows.push(['Polmed Connect Helpdesk — Report Export']);
   rows.push(['Period', periodLabel]);
-  rows.push(['Generated', new Date().toLocaleString()]);
+  rows.push(['Generated', formatHarareDateTime(new Date())]);
   rows.push([]);
 
   rows.push(['KPI', 'Value']);
