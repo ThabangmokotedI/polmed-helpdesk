@@ -61,7 +61,15 @@ function diffSyncableFields(existingData, incoming) {
   for (const field of SYNCABLE_FIELDS) {
     const oldVal = existingData[field] ?? null;
     const newVal = incoming[field] ?? null;
-    if (oldVal !== newVal) {
+    
+    // For string comparison: trim both sides first.
+    // Non-string values (like rtInHours) use exact comparison.
+    let oldForComparison = oldVal;
+    let newForComparison = newVal;
+    if (typeof oldVal === 'string') oldForComparison = oldVal.trim();
+    if (typeof newVal === 'string') newForComparison = newVal.trim();
+    
+    if (oldForComparison !== newForComparison) {
       changes[field] = { from: oldVal, to: newVal };
     }
   }
@@ -69,7 +77,7 @@ function diffSyncableFields(existingData, incoming) {
 }
 
 async function run() {
-  const raw = JSON.parse(fs.readFileSync(IMPORT_FILE, 'utf8'));
+  const raw = JSON.parse(fs.readFileSync(IMPORT_FILE, 'utf8').replace(/^\uFEFF/, ''));
   console.log(`Loaded ${raw.length} tickets from tickets_import.json.`);
 
   // Dry-run pass first: work out what would actually happen before writing
