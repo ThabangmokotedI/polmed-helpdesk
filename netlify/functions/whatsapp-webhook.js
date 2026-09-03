@@ -92,9 +92,9 @@ async function maybeSendAlertEmail(status, errorMessage) {
 
   try {
     const form = new URLSearchParams();
-    form.append('from', `Polmed Helpdesk Alerts <alerts@${mailgunDomain}>`);
+    form.append('from', `POLMED Helpdesk Alerts <alerts@${mailgunDomain}>`);
     form.append('to', alertEmailTo);
-    form.append('subject', `⚠ Polmed Helpdesk: WhatsApp webhook issue (${status})`);
+    form.append('subject', `⚠ POLMED Helpdesk: WhatsApp webhook issue (${status})`);
     form.append('text',
       `The WhatsApp webhook has reported a problem and may not be creating tickets from member messages.\n\n` +
       `Status: ${status}\nDetails: ${errorMessage || 'No further detail available.'}\nTime: ${new Date().toISOString()}\n\n` +
@@ -236,9 +236,9 @@ function isWithinBusinessHours(date) {
 
 async function sendAfterHoursMessage(phoneNumber) {
   if (!accessToken || !phoneNumberId) return;
-  const text = "Thanks for messaging Polmed Connect Helpdesk! Our agents are available Monday–Friday, 08:00–17:00 (SA time), and we're currently offline.\n\n" +
+  const text = "Thanks for messaging POLMED Connect Helpdesk! Our agents are available Monday–Friday, 08:00–17:00 (SA time), and we're currently offline.\n\n" +
     "To help us assist you faster once we're back, please reply with:\n" +
-    "1. A description of what you're struggling with in the Polmed Connect app\n" +
+    "1. A description of what you're struggling with in the POLMED Connect app\n" +
     "2. Your membership number\n" +
     "3. Your ID number\n" +
     "4. Your email address\n\n" +

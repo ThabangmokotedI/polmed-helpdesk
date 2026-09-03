@@ -143,17 +143,6 @@ body {
 .error-box { background: var(--error-bg); color: var(--error); border: 1px solid #F1948A; }
 .success-box { background: var(--success-bg); color: var(--success); border: 1px solid #82E0AA; }
 
-.demo-note {
-  background: #F9F4EA;
-  border: 1px solid #F5D7B6;
-  color: #814A18;
-  padding: 12px 14px;
-  border-radius: var(--radius);
-  font-size: 13px;
-  line-height: 1.5;
-  margin-bottom: 18px;
-}
-
 /* FORM */
 .auth-form { display: flex; flex-direction: column; gap: 0; }
 
@@ -286,3 +275,4 @@ body {
 @media (max-width: 500px) {
   .login-card { padding: 32px 24px; }
 }
+

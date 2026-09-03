@@ -1,46 +1,14 @@
-// js/tickets.js — Polmed Helpdesk: auth, tickets, reports, role-based access
+// js/tickets.js — POLMED Helpdesk: auth, tickets, reports, role-based access
 import { firebaseConfig } from './firebase-config.js';
 
-const isConfigured = firebaseConfig.apiKey && !firebaseConfig.apiKey.startsWith('REPLACE');
-
 // ── Firebase module imports ───────────────────────────────────────────────────
-let initializeApp, getAuth, onAuthStateChanged, fbSignOut;
-let getFirestore, collection, addDoc, updateDoc, deleteDoc, doc,
-    onSnapshot, query, orderBy, serverTimestamp, Timestamp, getDoc, setDoc, arrayUnion;
+const appMod  = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+const authMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+const fsMod   = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
 
-if (!isConfigured) {
-  const mock = await import('./local-firebase-mock.js');
-  ({
-    initializeApp, getAuth, onAuthStateChanged,
-    getFirestore, collection, addDoc, updateDoc, deleteDoc, doc,
-    onSnapshot, query, orderBy, serverTimestamp, Timestamp, getDoc, setDoc,
-    arrayUnion, // ← NEW: local-firebase-mock.js must export this too, or audit
-                //   logging (and ticket saves in general) will throw in demo mode.
-    signOut: fbSignOut
-  } = mock);
-} else {
-  const appMod  = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-  const authMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
-  const fsMod   = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-  initializeApp    = appMod.initializeApp;
-  getAuth          = authMod.getAuth;
-  onAuthStateChanged = authMod.onAuthStateChanged;
-  fbSignOut        = authMod.signOut;
-  getFirestore     = fsMod.getFirestore;
-  collection       = fsMod.collection;
-  addDoc           = fsMod.addDoc;
-  updateDoc        = fsMod.updateDoc;
-  deleteDoc        = fsMod.deleteDoc;
-  doc              = fsMod.doc;
-  onSnapshot       = fsMod.onSnapshot;
-  query            = fsMod.query;
-  orderBy          = fsMod.orderBy;
-  serverTimestamp  = fsMod.serverTimestamp;
-  Timestamp        = fsMod.Timestamp;
-  getDoc           = fsMod.getDoc;
-  setDoc           = fsMod.setDoc;
-  arrayUnion       = fsMod.arrayUnion; // ← NEW
-}
+const { initializeApp, getAuth, onAuthStateChanged, signOut: fbSignOut } = { ...appMod, ...authMod };
+const { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc,
+        onSnapshot, query, orderBy, serverTimestamp, Timestamp, getDoc, setDoc, arrayUnion } = fsMod;
 
 const app  = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -116,13 +84,8 @@ function setAgentUI(email, role) {
 function updateEnvironmentBadge() {
   const badge = document.getElementById('env-badge');
   if (!badge) return;
-  if (!isConfigured) {
-    badge.innerHTML = '<span class="live-dot"></span> Local mock (no Firebase config)';
-    badge.classList.add('demo');
-  } else {
-    badge.innerHTML = '<span class="live-dot"></span> Live';
-    badge.classList.remove('demo');
-  }
+  badge.innerHTML = '<span class="live-dot"></span> Live';
+  badge.classList.remove('demo');
 }
 
 // ── Tickets listener ──────────────────────────────────────────────────────────
@@ -210,7 +173,7 @@ function renderStats() {
 // ── Unread notifications: badge + flashing tab title + sound alert ───────────
 let lastUnreadCount = 0;
 let flashInterval   = null;
-const BASE_TITLE    = 'Polmed Connect — Helpdesk Tracker';
+const BASE_TITLE    = 'POLMED Connect — Helpdesk Tracker';
 
 function renderUnreadCount() {
   const unreadCount = tickets.filter(t => t.hasNewReply).length;
@@ -650,7 +613,7 @@ function viewTicket(id) {
                     : t.source === 'email-webhook'     ? '🤖 Auto (Email)'
                     : '✍️ Manual';
   const canReplyByWhatsApp = t.contactMethod === 'WhatsApp' && !!t.phoneNumber;
-  const suggestedReply = `Thank you for contacting the Polmed Connect Helpdesk. Your ticket reference is ${t.ticketId}. We will follow up with you shortly.`;
+  const suggestedReply = `Thank you for contacting the POLMED Connect Helpdesk. Your ticket reference is ${t.ticketId}. We will follow up with you shortly.`;
 
   // ── Returning-member detection ────────────────────────────────────────────
   // Uses the phone number purely as an internal matching key — the number
@@ -1095,7 +1058,7 @@ function editFromDetail() { closeDetail(); editTicketById(editingId); }
 window.copyReply = function () {
   const t = tickets.find(x => x.id === editingId);
   if (!t || !t.ticketId) return;
-  const reply = `Thank you for contacting the Polmed Connect Helpdesk. Your ticket reference is ${t.ticketId}. We will follow up with you shortly.`;
+  const reply = `Thank you for contacting the POLMED Connect Helpdesk. Your ticket reference is ${t.ticketId}. We will follow up with you shortly.`;
   navigator.clipboard.writeText(reply)
     .then(() => alert('Reference reply copied to clipboard.'))
     .catch(() => alert('Copy failed. Please try again.'));

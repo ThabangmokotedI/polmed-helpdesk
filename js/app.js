@@ -11,7 +11,7 @@ function setPage(page) {
   });
 
   const titles = {
-    tickets: ['All Tickets',            'Polmed Connect App — Member Support 2026'],
+    tickets: ['All Tickets',            'POLMED Connect App — Member Support 2026'],
     reports: ['Reporting Dashboard',    'Monthly stats, resolution times, issue breakdown'],
     setup:   ['Setup & Integrations',  'WhatsApp auto-logging · Email-to-ticket · Role management'],
     guide:   ['WhatsApp Workflow',      'How inbound messages become helpdesk tickets'],

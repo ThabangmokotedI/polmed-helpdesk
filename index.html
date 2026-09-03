@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Polmed Connect — Helpdesk Login</title>
+  <title>POLMED Connect — Helpdesk Login</title>
   <link rel="icon" type="image/png" href="img/polmed-logo.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet">
@@ -16,7 +16,7 @@
     <div class="login-card">
       <div class="brand">
         <div class="brand-logo">
-          <img src="img/polmed-logo.png" alt="Polmed logo" width="40" height="40" style="display:block;border-radius:50%;">
+          <img src="img/polmed-logo.png" alt="POLMED logo" width="40" height="40" style="display:block;border-radius:50%;">
         </div>
         <div class="brand-text">
           <div class="brand-name">POLMED</div>
@@ -26,7 +26,7 @@
 
       <div class="login-heading">
         <h1>Agent Sign In</h1>
-        <p>Sign in with your Polmed helpdesk email address</p>
+        <p>Sign in with your POLMED helpdesk email address</p>
       </div>
 
       <div id="error-box" class="error-box" style="display:none"></div>
@@ -111,18 +111,10 @@
   <script type="module">
     (async () => {
       const { firebaseConfig } = await import("./js/firebase-config.js");
-      const isConfigPlaceholders = firebaseConfig.apiKey && firebaseConfig.apiKey.startsWith("REPLACE");
+      const appMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+      const authMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
 
-      let mod;
-      if (isConfigPlaceholders) {
-        mod = await import('./js/local-firebase-mock.js');
-      } else {
-        const appMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-        const authMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
-        mod = { ...appMod, ...authMod, firebaseConfig };
-      }
-
-      const { initializeApp, getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, onAuthStateChanged } = mod;
+      const { initializeApp, getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, onAuthStateChanged } = { ...appMod, ...authMod };
       const app = initializeApp(firebaseConfig);
       const auth = getAuth(app);
 

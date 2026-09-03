@@ -30,7 +30,6 @@ polmed-helpdesk/
 │   └── conversation-thread.css     Chat thread + ticket detail styling
 ├── js/
 │   ├── firebase-config.js          Firebase web app config (safe to commit)
-│   ├── local-firebase-mock.js      Local mock mode when Firebase config is missing
 │   ├── auth.js                     Login/reset UI helpers
 │   └── tickets.js                  Ticket logic, reports, filters, roles
 ├── netlify/functions/
