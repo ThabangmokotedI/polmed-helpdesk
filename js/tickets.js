@@ -64,6 +64,7 @@ window.openNewTicket    = openNewTicket;
 window.editTicketById   = editTicketById;
 window.closeModal       = closeModal;
 window.saveTicket       = saveTicket;
+window.archiveTicket    = archiveTicket;
 window.deleteTicket     = deleteTicket;
 window.viewTicket       = viewTicket;
 window.closeDetail      = closeDetail;
@@ -294,7 +295,9 @@ function filterTickets() {
       (t.identifier  && String(t.identifier).toLowerCase().includes(q)) ||
       (t.issueType   && t.issueType.toLowerCase().includes(q))   ||
       (t.description && t.description.toLowerCase().includes(q));
-    const mS = showArchived ? t.archived === true : (!fs || t.status === fs);
+    const mS = showArchived
+      ? t.archived === true
+      : t.archived !== true && (!fs || t.status === fs);
     const mC = !fc || t.contactMethod === fc;
     const mI = !fi || t.issueType === fi;
     return mQ && mS && mC && mI;
@@ -363,6 +366,7 @@ function openNewTicket() {
   document.getElementById('modal-tid').textContent   = '';
   document.getElementById('wa-tip').style.display    = 'flex';
   document.getElementById('suggest-btn').style.display = 'none';
+  document.getElementById('archive-btn').style.display = 'none';
   document.getElementById('delete-btn').style.display = 'none';
   document.getElementById('save-btn').textContent    = 'Log Ticket';
   clearForm();
@@ -436,6 +440,8 @@ function editTicketById(id) {
   document.getElementById('suggest-btn').style.display = 'inline-flex';
   document.getElementById('delete-btn').style.display =
     currentRole === 'supervisor' ? 'inline-flex' : 'none';
+  document.getElementById('archive-btn').style.display =
+    currentRole === 'supervisor' && !t.archived ? 'inline-flex' : 'none';
   document.getElementById('save-btn').textContent    = 'Save Changes';
   document.getElementById('f-contact').value         = t.contactMethod || '';
   document.getElementById('f-identifier').value      = t.identifier ||
@@ -664,7 +670,7 @@ async function saveTicket() {
   btn.textContent = editingId ? 'Save Changes' : 'Log Ticket';
 }
 
-async function deleteTicket() {
+async function archiveTicket() {
   if (!editingId) return;
   if (currentRole !== 'supervisor') {
     alert('Only supervisors can archive tickets.');
@@ -682,6 +688,28 @@ async function deleteTicket() {
     closeModal();
   } catch (e) {
     alert('Error archiving ticket: ' + e.message);
+  }
+}
+
+async function deleteTicket() {
+  if (!editingId) return;
+  if (currentRole !== 'supervisor') {
+    alert('Only supervisors can permanently delete tickets.');
+    return;
+  }
+  if (!confirm('Permanently delete this ticket? This cannot be undone and it will no longer be available for duplicate detection.')) return;
+  try {
+    const t = tickets.find(x => x.id === editingId);
+    await setDoc(doc(db, 'deletionLog', editingId), {
+      ticketId: t?.ticketId || editingId,
+      deletedBy: currentUser.email,
+      deletedAt: serverTimestamp(),
+      finalState: t || null
+    });
+    await deleteDoc(doc(db, 'tickets', editingId));
+    closeModal();
+  } catch (e) {
+    alert('Error deleting ticket: ' + e.message);
   }
 }
 
@@ -728,6 +756,10 @@ function viewTicket(id) {
         <button type="button" class="btn btn-sm" onclick="viewTicket('${possibleDuplicate.id}')">View earlier ticket</button>
       </div>
     </div>` : '';
+  const mergedNote = t.status === 'Merged' && t.mergedIntoTicketId ? `
+    <div class="duplicate-banner merged-ticket-note">
+      This ticket was merged into <strong>${escapeHtml(t.mergedIntoTicketId)}</strong>. Its conversation is retained there.
+    </div>` : '';
 
   // ── Returning-member detection ────────────────────────────────────────────
   // Uses the phone number purely as an internal matching key — the number
@@ -760,6 +792,7 @@ function viewTicket(id) {
     ${anonymizedNote}
     ${returningMemberNote}
       ${duplicateBanner}
+    ${mergedNote}
     <div class="detail-grid">
       <div class="detail-item"><label>Contact Method</label><span>${escapeHtml(t.contactMethod) || '—'}</span></div>
       <div class="detail-item"><label>Member Identifier</label><span>${escapeHtml(t.identifier) || '—'}</span></div>

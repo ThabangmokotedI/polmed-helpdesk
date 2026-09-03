@@ -528,8 +528,11 @@ style="margin-bottom:16px;display:none">
       </div>
 
       <div class="modal-footer">
-        <button class="btn btn-danger" id="delete-btn" onclick="deleteTicket()" style="display:none;margin-right:auto">
+        <button class="btn" id="archive-btn" onclick="archiveTicket()" style="display:none;margin-right:auto">
           Archive ticket
+        </button>
+        <button class="btn btn-danger" id="delete-btn" onclick="deleteTicket()" style="display:none;margin-right:auto">
+          Delete permanently
         </button>
         <button class="btn" onclick="closeModal()">Cancel</button>
         <button class="btn btn-primary" onclick="saveTicket()" id="save-btn">Log Ticket</button>
