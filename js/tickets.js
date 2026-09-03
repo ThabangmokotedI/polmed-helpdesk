@@ -8,7 +8,8 @@ const fsMod   = await import('https://www.gstatic.com/firebasejs/10.12.0/firebas
 
 const { initializeApp, getAuth, onAuthStateChanged, signOut: fbSignOut } = { ...appMod, ...authMod };
 const { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc,
-        onSnapshot, query, orderBy, serverTimestamp, Timestamp, getDoc, setDoc, arrayUnion } = fsMod;
+  onSnapshot, getDocs, query, orderBy, startAfter, limit, serverTimestamp,
+  Timestamp, getDoc, setDoc, arrayUnion } = fsMod;
 
 const HARARE_TIME_ZONE = 'Africa/Harare';
 
@@ -52,8 +53,17 @@ const db   = getFirestore(app);
 let currentUser = null;
 let currentRole = 'agent';   // 'agent' | 'supervisor'
 let tickets     = [];
+let liveTickets = [];
+let olderTickets = [];
+let olderTicketsCursor = null;
+let hasMoreTickets = true;
+let livePageInitialized = false;
+let loadingOlderTickets = false;
+let reportTickets = null;
+let loadingReportTickets = false;
 let editingId   = null;
 let formDirty   = false;
+const TICKET_PAGE_SIZE = 100;
 
 // ── Global function exports ───────────────────────────────────────────────────
 window.filterTickets    = filterTickets;
@@ -72,6 +82,8 @@ window.editFromDetail   = editFromDetail;
 window.signOut          = signOut;
 window.renderReports    = renderReports;
 window.updateReportPeriod = updateReportPeriod;
+window.loadOlderTickets = loadOlderTickets;
+window.refreshReports = refreshReports;
 
 // ── Auth state ────────────────────────────────────────────────────────────────
 onAuthStateChanged(auth, async (user) => {
@@ -145,10 +157,17 @@ function ticketActivityTime(t) {
 }
 
 function listenToTickets() {
-  const q = query(collection(db, 'tickets'), orderBy('createdAt', 'desc'));
+  const q = query(collection(db, 'tickets'), orderBy('createdAt', 'desc'), limit(TICKET_PAGE_SIZE));
   onSnapshot(q, (snapshot) => {
-    tickets = snapshot.docs
-      .map(d => ({ id: d.id, ...d.data() }))
+    liveTickets = snapshot.docs
+      .map(d => ({ id: d.id, ...d.data() }));
+    olderTickets = olderTickets.filter(ticket => !liveTickets.some(live => live.id === ticket.id));
+    olderTicketsCursor = snapshot.docs[snapshot.docs.length - 1] || olderTicketsCursor;
+    if (!livePageInitialized) {
+      hasMoreTickets = snapshot.size === TICKET_PAGE_SIZE;
+      livePageInitialized = true;
+    }
+    tickets = [...liveTickets, ...olderTickets]
       .sort((a, b) => {
         // New / unread tickets are always pinned above everything else,
         // so they never get buried by scrolling. Within each group,
@@ -158,6 +177,14 @@ function listenToTickets() {
         if (aPin !== bPin) return bPin - aPin;
         return ticketActivityTime(b) - ticketActivityTime(a);
       });
+    if (reportTickets) {
+      const liveIds = new Set(liveTickets.map(ticket => ticket.id));
+      reportTickets = [
+        ...reportTickets.filter(ticket => !liveIds.has(ticket.id)),
+        ...liveTickets
+      ];
+    }
+    updateOlderTicketsButton();
     renderStats();
     filterTickets();
     if (document.getElementById('page-reports')?.style.display !== 'none') {
@@ -173,6 +200,44 @@ function listenToTickets() {
       }
     }
   });
+}
+
+async function loadOlderTickets() {
+  if (loadingOlderTickets || !hasMoreTickets || !olderTicketsCursor) return;
+  loadingOlderTickets = true;
+  updateOlderTicketsButton();
+  try {
+    const olderQuery = query(
+      collection(db, 'tickets'),
+      orderBy('createdAt', 'desc'),
+      startAfter(olderTicketsCursor),
+      limit(TICKET_PAGE_SIZE)
+    );
+    const snapshot = await getDocs(olderQuery);
+    const page = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    olderTickets = [...olderTickets, ...page]
+      .filter((ticket, index, all) => all.findIndex(item => item.id === ticket.id) === index);
+    olderTicketsCursor = snapshot.docs[snapshot.docs.length - 1] || olderTicketsCursor;
+    hasMoreTickets = snapshot.size === TICKET_PAGE_SIZE;
+    tickets = [...liveTickets, ...olderTickets]
+      .sort((a, b) => ticketActivityTime(b) - ticketActivityTime(a));
+    filterTickets();
+  } catch (err) {
+    console.error('Could not load older tickets:', err.message);
+  } finally {
+    loadingOlderTickets = false;
+    updateOlderTicketsButton();
+  }
+}
+
+function updateOlderTicketsButton() {
+  const button = document.getElementById('load-older-tickets');
+  const hint = document.getElementById('load-older-hint');
+  if (hint) hint.textContent = `Showing ${liveTickets.length + olderTickets.length} loaded tickets`;
+  if (!button) return;
+  button.style.display = hasMoreTickets ? 'inline-flex' : 'none';
+  button.disabled = loadingOlderTickets;
+  button.textContent = loadingOlderTickets ? 'Loading…' : 'Load older tickets';
 }
 function listenToHealth() {
   onSnapshot(doc(db, 'system', 'webhookHealth'), (snap) => {
@@ -1384,15 +1449,34 @@ function clearForm() {
 // ═════════════════════════════════════════════════════════════════════════════
 //  REPORTS DASHBOARD
 // ═════════════════════════════════════════════════════════════════════════════
-function renderReports() {
+async function renderReports() {
+  if (!reportTickets) {
+    if (loadingReportTickets) return;
+    loadingReportTickets = true;
+    try {
+      const reportQuery = query(collection(db, 'tickets'), orderBy('createdAt', 'desc'));
+      const snapshot = await getDocs(reportQuery);
+      reportTickets = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch (err) {
+      console.error('Could not load report data:', err.message);
+      return;
+    } finally {
+      loadingReportTickets = false;
+    }
+  }
   const period  = document.getElementById('report-period')?.value || 'all';
-  const subset  = applyPeriodFilter(tickets, period);
+  const reportableTickets = reportTickets.filter(t => t.archived !== true);
+  const subset  = applyPeriodFilter(reportableTickets, period);
+  const periodOption = document.getElementById('report-period')?.selectedOptions?.[0]?.textContent || 'All time';
+  const reportTitle = document.getElementById('monthly-chart-title');
+  if (reportTitle) reportTitle.textContent = `Tickets per Month (${periodOption})`;
 
   const total      = subset.length;
   const resolved   = subset.filter(t => t.status === 'Resolved').length;
 const handled    = subset.filter(t => t.status === 'Resolved' || t.status === 'Redirected').length;
-  const rtValues   = subset.filter(t => t.rtInHours > 0 && t.status === 'Resolved')
-                           .map(t => t.rtInHours);
+  const rtValues   = subset.filter(t => t.status === 'Resolved')
+                           .map(ticketResolutionHours)
+                           .filter(hours => hours > 0);
   const avgRT      = rtValues.length
     ? (rtValues.reduce((a, b) => a + b, 0) / rtValues.length).toFixed(1)
     : '—';
@@ -1404,6 +1488,9 @@ const handled    = subset.filter(t => t.status === 'Resolved' || t.status === 'R
 
   document.getElementById('r-total').textContent   = total;
   document.getElementById('r-avg-rt').textContent  = avgRT === '—' ? '—' : avgRT + ' hrs';
+  document.getElementById('r-avg-rt').title = avgRT === '—'
+    ? 'No resolved tickets in this period have a recorded resolution time.'
+    : `Average from ${rtValues.length} resolved ticket${rtValues.length === 1 ? '' : 's'} with recorded timing`;
   document.getElementById('r-rate').textContent    = total ? resRate + '%' : '—';
   document.getElementById('r-wa').textContent      = waCount;
   document.getElementById('r-email').textContent   = emCount;
@@ -1420,46 +1507,72 @@ const handled    = subset.filter(t => t.status === 'Resolved' || t.status === 'R
 
 function applyPeriodFilter(list, period) {
   if (period === 'all') return list;
-  const now      = new Date();
-  const thisYear = now.getFullYear();
-  const thisMon  = now.getMonth();
+  const [thisYear, thisMonth] = harareInputParts(new Date()).date.split('-').map(Number);
+  const monthStart = (year, month) => {
+    const date = new Date(Date.UTC(year, month - 1, 1));
+    return date.toISOString().slice(0, 10);
+  };
   if (period === 'this-month') {
-    return list.filter(t => {
-      const d = ticketDate(t);
-      return d && d.getFullYear() === thisYear && d.getMonth() === thisMon;
-    });
+    const start = monthStart(thisYear, thisMonth);
+    const end = monthStart(thisYear, thisMonth + 1);
+    return list.filter(t => ticketDateValue(t) >= start && ticketDateValue(t) < end);
   }
   if (period === 'last-month') {
-    const lm = new Date(thisYear, thisMon - 1, 1);
-    return list.filter(t => {
-      const d = ticketDate(t);
-      return d && d.getFullYear() === lm.getFullYear() && d.getMonth() === lm.getMonth();
-    });
+    const start = monthStart(thisYear, thisMonth - 1);
+    const end = monthStart(thisYear, thisMonth);
+    return list.filter(t => ticketDateValue(t) >= start && ticketDateValue(t) < end);
   }
   if (period === 'last-3') {
-    const cutoff = new Date(thisYear, thisMon - 2, 1);
-    return list.filter(t => { const d = ticketDate(t); return d && d >= cutoff; });
+    const start = monthStart(thisYear, thisMonth - 2);
+    return list.filter(t => ticketDateValue(t) >= start);
   }
   if (period === 'last-6') {
-    const cutoff = new Date(thisYear, thisMon - 5, 1);
-    return list.filter(t => { const d = ticketDate(t); return d && d >= cutoff; });
+    const start = monthStart(thisYear, thisMonth - 5);
+    return list.filter(t => ticketDateValue(t) >= start);
+  }
+  if (period === 'custom') {
+    const start = document.getElementById('report-start')?.value || '';
+    const end = document.getElementById('report-end')?.value || '';
+    if (!start || !end || start > end) return [];
+    const endDate = new Date(`${end}T00:00:00Z`);
+    endDate.setUTCDate(endDate.getUTCDate() + 1);
+    const endExclusive = endDate.toISOString().slice(0, 10);
+    return list.filter(t => ticketDateValue(t) >= start && ticketDateValue(t) < endExclusive);
   }
   return list;
 }
 
+function ticketDateValue(t) {
+  if (t.dateReceived) return t.dateReceived;
+  if (t.createdAt?.toDate) return harareInputParts(t.createdAt.toDate()).date;
+  return '';
+}
+
 function ticketDate(t) {
-  if (t.dateReceived) return new Date(t.dateReceived);
+  if (t.dateReceived) return new Date(`${t.dateReceived}T00:00:00Z`);
   if (t.createdAt?.toDate) return t.createdAt.toDate();
   return null;
 }
 
+function ticketResolutionHours(ticket) {
+  const numericHours = Number(ticket.rtInHours);
+  if (Number.isFinite(numericHours) && numericHours > 0) return numericHours;
+  const value = String(ticket.resolutionTime || '').trim().toLowerCase();
+  const match = value.match(/([\d.]+)\s*(minute|minutes|min|mins|hour|hours|hr|hrs|day|days)/);
+  if (!match) return 0;
+  const amount = Number(match[1]);
+  if (!Number.isFinite(amount)) return 0;
+  if (match[2].startsWith('day')) return amount * 24;
+  if (match[2].startsWith('hour') || match[2].startsWith('hr')) return amount;
+  return amount / 60;
+}
+
 function renderMonthlyChart(subset) {
   const months = [];
+  const [currentYear, currentMonth] = harareInputParts(new Date()).date.split('-').map(Number);
   for (let i = 5; i >= 0; i--) {
-    const d     = new Date();
-    d.setDate(1);
-    d.setMonth(d.getMonth() - i);
-    const key   = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const d = new Date(Date.UTC(currentYear, currentMonth - 1 - i, 1));
+    const key = d.toISOString().slice(0, 7);
     const label = new Intl.DateTimeFormat('en-GB', {
       timeZone: HARARE_TIME_ZONE,
       month: 'short',
@@ -1468,7 +1581,7 @@ function renderMonthlyChart(subset) {
     const count = subset.filter(t => {
       const td = ticketDate(t);
       if (!td) return false;
-      return `${td.getFullYear()}-${String(td.getMonth() + 1).padStart(2, '0')}` === key;
+      return ticketDateValue(t).slice(0, 7) === key;
     }).length;
     months.push({ label, count });
   }
@@ -1547,6 +1660,7 @@ function renderStatusChart(subset) {
     { label: 'Resolved',    key: 'Resolved',     color: '#10B981' },
     { label: 'Redirected',  key: 'Redirected',   color: '#64748B' },
     { label: 'Unresolved',  key: 'Unresolved',   color: '#EF4444' },
+    { label: 'Merged',       key: 'Merged',       color: '#8B5CF6' },
   ];
   const dataArr = statuses.map(s => ({
     label: s.label,
@@ -1576,14 +1690,17 @@ function renderResolutionChart(subset) {
   const el = document.getElementById('resolution-chart');
   if (!el) return;
 
-  const resolved = subset.filter(t => t.status === 'Resolved' && typeof t.rtInHours === 'number' && t.rtInHours > 0);
+  const resolved = subset
+    .filter(t => t.status === 'Resolved')
+    .map(t => ({ ticket: t, hours: ticketResolutionHours(t) }))
+    .filter(item => item.hours > 0);
   const buckets = [
     { label: 'Under 1 hour',  test: h => h < 1 },
     { label: '1–4 hours',     test: h => h >= 1 && h < 4 },
     { label: '4–24 hours',    test: h => h >= 4 && h < 24 },
     { label: 'Over 24 hours', test: h => h >= 24 },
   ];
-  const counts = buckets.map(b => resolved.filter(t => b.test(t.rtInHours)).length);
+  const counts = buckets.map(b => resolved.filter(item => b.test(item.hours)).length);
   const maxVal = Math.max(...counts, 1);
   const colors = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444'];
 
@@ -1602,7 +1719,18 @@ function renderResolutionChart(subset) {
     </div>`).join('');
 }
 
-function updateReportPeriod() { renderReports(); }
+function updateReportPeriod() {
+  const customFields = document.getElementById('custom-period-fields');
+  if (customFields) {
+    customFields.style.display = document.getElementById('report-period')?.value === 'custom' ? 'inline-flex' : 'none';
+  }
+  renderReports();
+}
+
+async function refreshReports() {
+  reportTickets = null;
+  await renderReports();
+}
 
 // ── Stats export (CSV) ────────────────────────────────────────────────────────
 // Respects whatever period is currently selected in the Reports page filter.
@@ -1614,14 +1742,15 @@ function csvEscape(v) {
   return s;
 }
 
-window.downloadStatsCSV = function () {
+window.downloadStatsCSV = async function () {
   const period       = document.getElementById('report-period')?.value || 'all';
   const periodLabel  = document.getElementById('report-period')?.selectedOptions?.[0]?.textContent || period;
-  const subset       = applyPeriodFilter(tickets, period);
+  if (!reportTickets) await renderReports();
+  const subset       = applyPeriodFilter((reportTickets || []).filter(t => t.archived !== true), period);
 
   const total    = subset.length;
   const handled  = subset.filter(t => t.status === 'Resolved' || t.status === 'Redirected').length;
-  const rtValues = subset.filter(t => t.rtInHours > 0 && t.status === 'Resolved').map(t => t.rtInHours);
+  const rtValues = subset.filter(t => t.status === 'Resolved').map(ticketResolutionHours).filter(hours => hours > 0);
   const avgRT    = rtValues.length ? (rtValues.reduce((a, b) => a + b, 0) / rtValues.length).toFixed(1) : '';
   const resRate  = total ? Math.round((handled / total) * 100) : 0;
 
@@ -1653,21 +1782,21 @@ window.downloadStatsCSV = function () {
 
   rows.push(['Status Breakdown']);
   rows.push(['Status', 'Count']);
-  ['New', 'In Progress', 'Resolved', 'Redirected', 'Unresolved'].forEach(s => {
+  ['New', 'In Progress', 'Resolved', 'Redirected', 'Unresolved', 'Merged'].forEach(s => {
     rows.push([s, subset.filter(t => t.status === s).length]);
   });
   rows.push([]);
 
   rows.push(['Resolution Time Buckets (Resolved tickets only)']);
   rows.push(['Bucket', 'Count']);
-  const resolvedForBuckets = subset.filter(t => t.status === 'Resolved' && typeof t.rtInHours === 'number' && t.rtInHours > 0);
+  const resolvedForBuckets = subset.filter(t => t.status === 'Resolved').map(t => ({ ticket: t, hours: ticketResolutionHours(t) })).filter(item => item.hours > 0);
   const buckets = [
     { label: 'Under 1 hour',  test: h => h < 1 },
     { label: '1–4 hours',     test: h => h >= 1 && h < 4 },
     { label: '4–24 hours',    test: h => h >= 4 && h < 24 },
     { label: 'Over 24 hours', test: h => h >= 24 },
   ];
-  buckets.forEach(b => rows.push([b.label, resolvedForBuckets.filter(t => b.test(t.rtInHours)).length]));
+  buckets.forEach(b => rows.push([b.label, resolvedForBuckets.filter(item => b.test(item.hours)).length]));
 
   const csv  = rows.map(r => r.map(csvEscape).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });

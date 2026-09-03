@@ -162,6 +162,10 @@
             <div class="loading-row"><div class="spinner"></div>Loading tickets…</div>
           </div>
         </div>
+        <div class="load-older-wrap">
+          <button type="button" class="btn load-older-btn" id="load-older-tickets" onclick="loadOlderTickets()">Load older tickets</button>
+          <span class="load-older-hint" id="load-older-hint">Showing the newest 100 tickets</span>
+        </div>
       </section>
 
       <!-- ===== REPORTS PAGE ===== -->
@@ -174,9 +178,17 @@
             <option value="last-month">Last month</option>
             <option value="last-3">Last 3 months</option>
             <option value="last-6">Last 6 months</option>
+            <option value="custom">Custom period</option>
           </select>
+          <span id="custom-period-fields" class="custom-period-fields" style="display:none">
+            <label for="report-start">From</label>
+            <input type="date" id="report-start" onchange="updateReportPeriod()">
+            <label for="report-end">To</label>
+            <input type="date" id="report-end" onchange="updateReportPeriod()">
+          </span>
     <button type="button" class="btn btn-sm no-print" onclick="downloadStatsCSV()">⬇ Download CSV</button>
     <button type="button" class="btn btn-sm no-print" onclick="downloadStatsPDF()">⬇ Download PDF</button>
+    <button type="button" class="btn btn-sm no-print" onclick="refreshReports()">↻ Refresh report</button>
         </div>
 
         <!-- KPI cards -->
@@ -214,7 +226,7 @@
         <!-- Charts -->
         <div class="charts-grid">
           <div class="chart-card chart-wide">
-            <div class="chart-title">Tickets per Month (Last 6 months)</div>
+            <div class="chart-title" id="monthly-chart-title">Tickets per Month (Last 6 months)</div>
             <div id="monthly-chart" class="vbar-container"></div>
           </div>
 
@@ -331,7 +343,7 @@
           <div class="guide-card popia-card">
             <h2>⚠ POPIA Compliance Rules</h2>
             <ul class="popia-rules">
-              <li><strong>Member numbers only</strong> — never store full phone numbers. Use the member's Polmed membership number as the identifier.</li>
+              <li><strong>Controlled contact data</strong> — WhatsApp phone numbers are stored only as an internal threading key; use the member's POLMED membership number as the visible identifier.</li>
               <li><strong>Restricted access</strong> — only authorised helpdesk agents should have login credentials.</li>
               <li><strong>Retention</strong> — records older than 12 months must be anonymised or deleted.</li>
               <li><strong>No external sharing</strong> — never export or share ticket data with any party outside the Polmed helpdesk team.</li>
@@ -351,9 +363,9 @@
             </h2>
             <div class="steps">
               <div class="step"><div class="step-n">1</div><div class="step-text">A member messages the WhatsApp helpdesk number with an app issue.</div></div>
-              <div class="step"><div class="step-n">2</div><div class="step-text">During business hours (Mon–Fri, 08:00–17:00 SA time, excluding SA public holidays), a ticket is created with status <strong>New</strong> and the member gets an interactive list asking them to pick an issue type. Outside business hours, the ticket is still created, but the member instead gets an after-hours message asking them to describe their issue, membership number, ID number, and email so an agent can follow up once back online.</div></div>
-              <div class="step"><div class="step-n">3</div><div class="step-text">If the member picks an issue type from the list, it's filled in on the ticket automatically — always double-check it against what they actually wrote before relying on it.</div></div>
-              <div class="step"><div class="step-n">4</div><div class="step-text">The ticket appears instantly in the system. Click it, review the original message and any conversation so far, and fill in whatever's still missing: <strong>Issue Type</strong> (if not already set), <strong>Description</strong>, and <strong>Status</strong>.</div></div>
+              <div class="step"><div class="step-n">2</div><div class="step-text">During business hours (Mon–Fri, 08:00–17:00 SA time, excluding SA public holidays), a ticket is created with status <strong>New</strong> and the member gets an interactive issue-type list. Outside business hours, the ticket is still created, but the member gets an after-hours message asking for details so an agent can follow up.</div></div>
+              <div class="step"><div class="step-n">3</div><div class="step-text">When the member selects an issue type, it is saved on the ticket automatically and the ticket number is sent immediately. The original selection is also recorded in the conversation.</div></div>
+              <div class="step"><div class="step-n">4</div><div class="step-text">The ticket appears in the dashboard. The newest 100 tickets stay live; use <strong>Load older tickets</strong> for older pages. Review the conversation and complete any missing Issue Type, Summary, or Status fields.</div></div>
               <div class="step"><div class="step-n">5</div><div class="step-text">Reply directly from the ticket with <strong>Send via WhatsApp</strong>. You can also attach a file (📎), quote a specific member message before replying (↩), or react to one of their messages with an emoji.</div></div>
               <div class="step"><div class="step-n">6</div><div class="step-text">While you're typing a reply, other agents viewing the same ticket see an "already replying" notice, so two agents don't cross-reply to the same member.</div></div>
               <div class="step"><div class="step-n">7</div><div class="step-text">When resolved, update the ticket status to <strong>Resolved</strong>, fill in the resolution notes, and save.</div></div>
@@ -374,7 +386,7 @@
             <div class="steps">
               <div class="step"><div class="step-n">1</div><div class="step-text">If a member's last ticket was closed within the past 30 days and they message again, the system does <strong>not</strong> automatically reopen it — it creates a new ticket as usual, but flags it.</div></div>
               <div class="step"><div class="step-n">2</div><div class="step-text">Opening that new ticket shows a banner naming the earlier ticket and asking whether this message is a continuation of it.</div></div>
-              <div class="step"><div class="step-n">3</div><div class="step-text">Choosing <strong>Yes, merge</strong> moves the new message onto the original ticket, reopens it to <strong>In Progress</strong>, and marks the duplicate as <strong>Merged</strong>. Choosing <strong>No, keep separate</strong> just dismisses the banner and the new ticket proceeds normally.</div></div>
+              <div class="step"><div class="step-n">3</div><div class="step-text">Choosing <strong>Yes, merge</strong> moves the new conversation onto the original ticket, inserts a visible merge divider, reopens it to <strong>In Progress</strong>, and marks the duplicate as <strong>Merged</strong>. The duplicate retains a reference and can be undone from the divider. Choosing <strong>No, keep separate</strong> dismisses the banner and records that decision.</div></div>
             </div>
           </div>
 
@@ -404,7 +416,7 @@
               <div class="label-row"><span class="badge res">Resolved</span></div>
               <div class="label-row"><span class="badge redir">Redirected</span></div>
               <div class="label-row"><span class="badge unres">Unresolved</span></div>
-              <div class="label-row"><span class="badge">Merged <span style="font-size:11px;color:#888">(duplicate folded into another ticket — no colour yet)</span></span></div>
+              <div class="label-row"><span class="badge merged">Merged</span><span>Duplicate conversation folded into another ticket</span></div>
             </div>
           </div>
         </div>

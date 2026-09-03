@@ -547,9 +547,51 @@ body {
 
 .controls select:focus { border-color: var(--teal); }
 
+.custom-period-fields {
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.custom-period-fields input {
+  padding: 8px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
 .contact-member-result { min-height: 20px; font-size: 12px; }
 .contact-member-result.success { color: #1E8449; }
 .contact-member-result.error { color: #C0392B; }
+
+.load-older-wrap {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  padding: 20px 0 8px;
+}
+
+.load-older-btn {
+  min-width: 210px;
+  justify-content: center;
+  border-color: var(--teal);
+  color: var(--teal-dark);
+  font-weight: 600;
+}
+
+.load-older-btn:hover {
+  background: var(--teal-light);
+}
+
+.load-older-hint {
+  color: var(--text-muted);
+  font-size: 11px;
+}
 
 .duplicate-banner {
   margin-bottom: 14px;

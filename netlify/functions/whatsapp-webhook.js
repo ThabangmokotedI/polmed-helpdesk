@@ -433,11 +433,17 @@ exports.handler = async function (event) {
     const CONTINUATION_WINDOW_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
     let continuationSuggestion = null;
 
-    const recentSnap = await db.collection('tickets')
-      .where('phoneNumber', '==', sender)
-      .orderBy('createdAt', 'desc')
-      .limit(1)
-      .get();
+    let recentSnap;
+    try {
+      recentSnap = await db.collection('tickets')
+        .where('phoneNumber', '==', sender)
+        .orderBy('createdAt', 'desc')
+        .limit(1)
+        .get();
+    } catch (err) {
+      console.error('Could not check existing WhatsApp ticket; continuing with new ticket:', err.message);
+      recentSnap = { empty: true };
+    }
 
     if (!recentSnap.empty) {
       const ticketDoc  = recentSnap.docs[0];
@@ -498,12 +504,9 @@ exports.handler = async function (event) {
       }
     }
 
-        const resolvedWithSamePhone = (await db.collection('tickets')
-          .where('phoneNumber', '==', sender)
-          .get()).docs
-          .map(d => ({ doc: d, data: d.data() }))
-          .filter(item => item.data.status === 'Resolved')
-          .sort((a, b) => (b.data.createdAt?.toMillis?.() || 0) - (a.data.createdAt?.toMillis?.() || 0))[0];
+        const resolvedWithSamePhone = !recentSnap.empty && recentSnap.docs[0].data().status === 'Resolved'
+          ? { data: recentSnap.docs[0].data() }
+          : null;
 
         const ticket = {
       ticketId,

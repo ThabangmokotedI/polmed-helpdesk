@@ -14,7 +14,7 @@ function setPage(page) {
     tickets: ['All Tickets',            'POLMED Connect App — Member Support 2026'],
     reports: ['Reporting Dashboard',    'Monthly stats, resolution times, issue breakdown'],
     setup:   ['Setup & Integrations',  'WhatsApp auto-logging · Email-to-ticket · Role management'],
-    guide:   ['WhatsApp Workflow',      'How inbound messages become helpdesk tickets'],
+    guide:   ['Workflow',              'How messages become helpdesk tickets'],
   };
   const t = titles[page] || ['', ''];
   document.getElementById('page-title').textContent = t[0];
