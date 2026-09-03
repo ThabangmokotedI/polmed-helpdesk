@@ -514,7 +514,7 @@ exports.handler = async function (event) {
       mediaPath:     finalMediaPath,
       mediaType,
       phoneNumber:   sender,
-      identifier: incomingIdentifier,
+      identifier: '',
       description:   '',
       issueType:     selectedIssueType || '',
       conversation:  [{ from: 'member', text, mediaPath: finalMediaPath, mediaType, waMessageId, at: now.toISOString() }],
