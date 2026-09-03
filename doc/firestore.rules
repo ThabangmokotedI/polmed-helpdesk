@@ -14,11 +14,7 @@ service cloud.firestore {
         'contactMethod', 'identifier', 'issueType', 'description',
         'dateReceived', 'timeReceived', 'status', 'timeToFirstResponse',
         'resolutionTime', 'rtInHours', 'resolutionDescription',
-        'updatedBy', 'updatedAt', 'hasNewReply', 'typingBy', 'auditLog',
-        'possibleDuplicateReviewed', 'possibleDuplicateDecision',
-        'conversation', 'mergedConversation', 'mergedIntoPreviousStatus',
-        'mergedFromStatus', 'mergedIntoTicketId', 'mergedIntoTicketDocId',
-        'mergeId', 'mergedAt'
+        'updatedBy', 'updatedAt', 'hasNewReply', 'typingBy', 'auditLog'
       ];
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(allowedFields);
     }
@@ -38,24 +34,20 @@ service cloud.firestore {
       allow delete: if isSupervisor();
     }
 
-    // System health heartbeat — read-only for agents, written only by the
-    // Admin SDK from trusted server functions (never directly by a client).
-    match /system/{docId} {
-      allow read:  if isAgent();
-      allow write: if false;
-    }
-
-    // Deletion audit trail — a record of who deleted a ticket, when, and
-    // its final state, written client-side at the moment of deletion (only
-    // supervisors can ever reach that code path, since deleteTicket() itself
-    // is gated by currentRole === 'supervisor'). Immutable once written —
-    // nobody, including supervisors, can edit or remove an entry after the
-    // fact, so it stays a trustworthy record.
+    // Preserves a record of who deleted a ticket and its final state.
+    // Only supervisors can delete tickets in the first place, so only
+    // supervisors should be able to write here. No update/delete allowed —
+    // once written, a deletion record should be permanent.
     match /deletionLog/{ticketId} {
-      allow read:   if isAgent();
+      allow read:   if isSupervisor();
       allow create: if isSupervisor();
       allow update: if false;
       allow delete: if false;
+    }
+
+    match /system/{docId} {
+      allow read:  if isAgent();
+      allow write: if false;
     }
   }
 }
