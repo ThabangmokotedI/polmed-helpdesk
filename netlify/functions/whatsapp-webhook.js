@@ -188,7 +188,7 @@ async function sendIssueTypeList(phoneNumber) {
           type: 'interactive',
           interactive: {
             type: 'list',
-            body: { text: 'Thanks for reaching out! To help you faster, what is this about?' },
+            body: { text: 'Thank you for contacting the POLMED Connect Helpdesk. Please select the type of issue you are experiencing on the POLMED Connect app, and one of our agents will get back to you as soon as possible.' },
             action: { button: 'Select issue type', sections: [{ title: 'Issue Type', rows: ISSUE_TYPE_LIST_ROWS }] }
           }
         })
@@ -196,6 +196,31 @@ async function sendIssueTypeList(phoneNumber) {
     );
   } catch (err) {
     console.error('Could not send issue type list:', err.message);
+  }
+}
+
+async function sendTicketConfirmation(phoneNumber, ticketId) {
+  if (!accessToken || !phoneNumberId) return;
+  try {
+    await fetch(
+      `https://graph.facebook.com/${graphVersion}/${phoneNumberId}/messages`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: phoneNumber,
+          type: 'text',
+          text: { body: `Thank you. Your POLMED Helpdesk ticket number is ${ticketId}.` }
+        })
+      }
+    );
+  } catch (err) {
+    console.error('Could not send ticket confirmation:', err.message);
   }
 }
 
@@ -430,6 +455,7 @@ exports.handler = async function (event) {
 
         await ticketDoc.ref.update({
           conversation: admin.firestore.FieldValue.arrayUnion(newEntry),
+          ...(selectedIssueType ? { issueType: selectedIssueType } : {}),
           lastMemberMessage: text,
           lastMemberMessageAt: admin.firestore.FieldValue.serverTimestamp(),
           hasNewReply: true,
@@ -438,6 +464,7 @@ exports.handler = async function (event) {
         });
 
         console.log('Appended to existing ticket:', ticketData.ticketId, 'from sender:', sender.slice(-4));
+        if (selectedIssueType) await sendTicketConfirmation(sender, ticketData.ticketId);
         await recordHealth('ok');
         return { statusCode: 200, body: JSON.stringify({ ok: true, ticketId: ticketData.ticketId, appended: true }) };
       }
@@ -471,15 +498,12 @@ exports.handler = async function (event) {
       }
     }
 
-        const incomingIdentifier = sender;
-        const resolvedWithSameIdentifier = incomingIdentifier
-          ? (await db.collection('tickets')
-              .where('identifier', '==', incomingIdentifier)
-              .get()).docs
-              .map(d => ({ doc: d, data: d.data() }))
-              .filter(item => item.data.status === 'Resolved')
-              .sort((a, b) => (b.data.createdAt?.toMillis?.() || 0) - (a.data.createdAt?.toMillis?.() || 0))[0]
-          : null;
+        const resolvedWithSamePhone = (await db.collection('tickets')
+          .where('phoneNumber', '==', sender)
+          .get()).docs
+          .map(d => ({ doc: d, data: d.data() }))
+          .filter(item => item.data.status === 'Resolved')
+          .sort((a, b) => (b.data.createdAt?.toMillis?.() || 0) - (a.data.createdAt?.toMillis?.() || 0))[0];
 
         const ticket = {
       ticketId,
@@ -492,7 +516,7 @@ exports.handler = async function (event) {
       phoneNumber:   sender,
       identifier: incomingIdentifier,
       description:   '',
-      issueType:     '',
+      issueType:     selectedIssueType || '',
       conversation:  [{ from: 'member', text, mediaPath: finalMediaPath, mediaType, waMessageId, at: now.toISOString() }],
       dateReceived:  received.date,
       timeReceived:  received.time,
@@ -502,15 +526,17 @@ exports.handler = async function (event) {
       updatedAt:     admin.firestore.FieldValue.serverTimestamp()
     };
 
-    if (resolvedWithSameIdentifier) {
-      ticket.possibleDuplicateOf = resolvedWithSameIdentifier.data.ticketId;
+    if (resolvedWithSamePhone) {
+      ticket.possibleDuplicateOf = resolvedWithSamePhone.data.ticketId;
     }
 
     await db.collection('tickets').add(ticket);
     // Only fires on a genuinely new conversation (not on messages threaded
     // onto an already-open ticket), so a member texting repeatedly at
     // 2am doesn't get spammed with the after-hours notice every time.
-    if (isWithinBusinessHours(now)) {
+    if (selectedIssueType) {
+      await sendTicketConfirmation(sender, ticketId);
+    } else if (isWithinBusinessHours(now)) {
       await sendIssueTypeList(sender);
     } else {
       await sendAfterHoursMessage(sender);

@@ -287,13 +287,14 @@ function filterTickets() {
   const fc = document.getElementById('filter-contact').value;
   const fi = document.getElementById('filter-issue').value;
   const sort = document.getElementById('sort-tickets')?.value || '';
+  const showArchived = fs === 'Archived';
   const filtered = tickets.filter(t => {
     const mQ = !q ||
       (t.ticketId    && t.ticketId.toLowerCase().includes(q))    ||
       (t.identifier  && String(t.identifier).toLowerCase().includes(q)) ||
       (t.issueType   && t.issueType.toLowerCase().includes(q))   ||
       (t.description && t.description.toLowerCase().includes(q));
-    const mS = !fs || t.status === fs;
+    const mS = showArchived ? t.archived === true : (!fs || t.status === fs);
     const mC = !fc || t.contactMethod === fc;
     const mI = !fi || t.issueType === fi;
     return mQ && mS && mC && mI;
@@ -666,26 +667,21 @@ async function saveTicket() {
 async function deleteTicket() {
   if (!editingId) return;
   if (currentRole !== 'supervisor') {
-    alert('Only supervisors can delete tickets.');
+    alert('Only supervisors can archive tickets.');
     return;
   }
-  if (!confirm('Permanently delete this ticket? This cannot be undone.')) return;
+  if (!confirm('Archive this ticket? It will be hidden from the default list but retained for history and duplicate detection.')) return;
   try {
-    // Preserve a record of the deletion (who, when, and the ticket's final
-    // state) in a separate collection, since the ticket document itself —
-    // and anything stored only on it, like auditLog — is about to be
-    // permanently removed and would otherwise vanish with it.
-    const t = tickets.find(x => x.id === editingId);
-    await setDoc(doc(db, 'deletionLog', editingId), {
-      ticketId:   t?.ticketId || editingId,
-      deletedBy:  currentUser.email,
-      deletedAt:  serverTimestamp(),
-      finalState: t || null
+    await updateDoc(doc(db, 'tickets', editingId), {
+      archived: true,
+      archivedBy: currentUser.email,
+      archivedAt: serverTimestamp(),
+      updatedBy: currentUser.email,
+      updatedAt: serverTimestamp()
     });
-    await deleteDoc(doc(db, 'tickets', editingId));
     closeModal();
   } catch (e) {
-    alert('Error deleting: ' + e.message);
+    alert('Error archiving ticket: ' + e.message);
   }
 }
 
