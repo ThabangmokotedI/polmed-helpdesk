@@ -14,7 +14,11 @@ service cloud.firestore {
         'contactMethod', 'identifier', 'issueType', 'description',
         'dateReceived', 'timeReceived', 'status', 'timeToFirstResponse',
         'resolutionTime', 'rtInHours', 'resolutionDescription',
-        'updatedBy', 'updatedAt', 'hasNewReply', 'typingBy', 'auditLog'
+        'updatedBy', 'updatedAt', 'hasNewReply', 'typingBy', 'auditLog',
+        'possibleDuplicateReviewed', 'possibleDuplicateDecision',
+        'conversation', 'mergedConversation', 'mergedIntoPreviousStatus',
+        'mergedFromStatus', 'mergedIntoTicketId', 'mergedIntoTicketDocId',
+        'mergeId', 'mergedAt', 'archived', 'archivedBy', 'archivedAt'
       ];
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(allowedFields);
     }
