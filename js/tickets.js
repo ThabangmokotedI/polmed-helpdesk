@@ -157,16 +157,14 @@ function ticketActivityTime(t) {
 }
 
 function listenToTickets() {
-  const q = query(collection(db, 'tickets'), orderBy('updatedAt', 'desc'), limit(TICKET_PAGE_SIZE));
+  const q = query(collection(db, 'tickets'), orderBy('updatedAt', 'desc'));
   onSnapshot(q, (snapshot) => {
     liveTickets = snapshot.docs
       .map(d => ({ id: d.id, ...d.data() }));
     olderTickets = olderTickets.filter(ticket => !liveTickets.some(live => live.id === ticket.id));
     olderTicketsCursor = snapshot.docs[snapshot.docs.length - 1] || olderTicketsCursor;
-    if (!livePageInitialized) {
-      hasMoreTickets = snapshot.size === TICKET_PAGE_SIZE;
-      livePageInitialized = true;
-    }
+    hasMoreTickets = false;
+    livePageInitialized = true;
     tickets = [...liveTickets, ...olderTickets]
       .sort((a, b) => {
         // New / unread tickets are always pinned above everything else,

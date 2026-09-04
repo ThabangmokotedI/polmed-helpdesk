@@ -358,7 +358,7 @@ exports.handler = async function (event) {
       console.error('WHATSAPP_APP_SECRET not set — rejecting webhook POST');
       await recordHealth('config_error', 'WHATSAPP_APP_SECRET is not set in environment variables');
     } else {
-      console.error('Rejected webhook POST: invalid or missing x-hub-signature-256');
+      console.error('Rejected webhook POST:', sigCheck.reason);
       // Not a health problem — a forged/bad request is the security check
       // working as intended. No alert, no banner.
     }
