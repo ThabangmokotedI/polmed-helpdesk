@@ -44,16 +44,26 @@ async function verifyAgent(event) {
   const authHeader = event.headers?.authorization || event.headers?.Authorization || '';
   const match = authHeader.match(/^Bearer (.+)$/);
   if (!match) return { ok: false, statusCode: 401, error: 'Missing Authorization header' };
+
   const idToken = match[1];
   try {
     const decoded = await admin.auth().verifyIdToken(idToken);
-    const agentSnap = await admin.firestore().collection('agents').doc(decoded.uid).get();
-    if (!agentSnap.exists) return { ok: false, statusCode: 403, error: 'No agent record for this account' };
+    const db = admin.firestore();
+    const agentRef = db.collection('agents').doc(decoded.uid);
+    const agentSnap = await agentRef.get();
+
+    if (!agentSnap.exists) {
+      await agentRef.set({
+        email: decoded.email || null,
+        role: 'agent',
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    }
+
     return { ok: true, uid: decoded.uid, email: decoded.email };
   } catch (err) {
     console.error('Token verification failed:', err.message);
     return { ok: false, statusCode: 401, error: 'Invalid or expired session. Please sign in again.' };
-    
   }
 }
 
