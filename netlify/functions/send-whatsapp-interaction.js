@@ -52,7 +52,7 @@ async function verifyAgent(event) {
     return { ok: true, uid: decoded.uid, email: decoded.email };
   } catch (err) {
     console.error('Token verification failed:', err.message);
-    return { ok: false, statusCode: 401, error: 'Invalid or expired session. Please sign in again.' };
+    
      return { ok: false, statusCode: 401, error: `Invalid or expired session: ${err.message}` }; 
   }
 }
