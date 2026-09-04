@@ -474,7 +474,7 @@ async function sendContactMember() {
   btn.textContent = 'Sending…';
   resultEl.textContent = '';
   try {
-    const idToken = await currentUser.getIdToken();
+    const idToken = await currentUser.getIdToken(true);
     const res = await fetch('/.netlify/functions/start-whatsapp-conversation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
@@ -1040,7 +1040,7 @@ async function resolveMediaUrl(path) {
   if (cached && cached.expiresAt > Date.now() + 60000) return cached.url;
   if (!currentUser) return null;
   try {
-    const idToken = await currentUser.getIdToken();
+    const idToken = await currentUser.getIdToken(true);
     const res = await fetch('/.netlify/functions/get-media-url', {
       method: 'POST',
       headers: {
@@ -1155,7 +1155,7 @@ window.clearAttachment = function () {
 };
 
 async function sendPendingAttachment(t, caption) {
-  const idToken = await currentUser.getIdToken();
+  const idToken = await currentUser.getIdToken(true);
   const res = await fetch('/.netlify/functions/send-whatsapp-media', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
@@ -1201,7 +1201,7 @@ window.sendReactionToMessage = async function (waMessageId, emoji) {
   if (!t || !t.phoneNumber) return;
   try {
     if (!currentUser) throw new Error('You are not signed in. Please refresh and log in again.');
-    const idToken = await currentUser.getIdToken();
+    const idToken = await currentUser.getIdToken(true);
     const res = await fetch('/.netlify/functions/send-whatsapp-interaction', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
@@ -1399,7 +1399,7 @@ window.sendWhatsAppReply = async function () {
   btn.textContent = 'Sending…';
   try {
     if (!currentUser) throw new Error('You are not signed in. Please refresh and log in again.');
-    const idToken = await currentUser.getIdToken();
+    const idToken = await currentUser.getIdToken(true);
     const isQuotedReply = !!currentReplyTarget;
     const url = isQuotedReply ? '/.netlify/functions/send-whatsapp-interaction' : '/.netlify/functions/send-whatsapp-reply';
     const payload = isQuotedReply ? { ticketId: t.ticketId, phoneNumber: t.phoneNumber, targetMessageId: currentReplyTarget.waMessageId, mode: 'reply', message } : { ticketId: t.ticketId, phoneNumber: t.phoneNumber, message };
