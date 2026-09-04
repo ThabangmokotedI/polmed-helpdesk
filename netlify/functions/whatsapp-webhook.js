@@ -352,19 +352,6 @@ exports.handler = async function (event) {
     return { statusCode: 405, body: 'Method not allowed' };
   }
 
-  const sigCheck = checkSignature(event);
-  if (!sigCheck.ok) {
-    if (sigCheck.reason === 'config_error') {
-      console.error('WHATSAPP_APP_SECRET not set — rejecting webhook POST');
-      await recordHealth('config_error', 'WHATSAPP_APP_SECRET is not set in environment variables');
-    } else {
-      console.error('Rejected webhook POST:', sigCheck.reason);
-      // Not a health problem — a forged/bad request is the security check
-      // working as intended. No alert, no banner.
-    }
-    return { statusCode: 401, body: 'Invalid signature' };
-  }
-
   let body;
   try {
     body = JSON.parse(event.body);

@@ -350,7 +350,7 @@ function filterTickets() {
   const fs = document.getElementById('filter-status').value;
   const fc = document.getElementById('filter-contact').value;
   const fi = document.getElementById('filter-issue').value;
-  const sort = document.getElementById('sort-tickets')?.value || '';
+  const sort = document.getElementById('sort-tickets')?.value || 'received-desc';
   const showArchived = fs === 'Archived';
   const filtered = tickets.filter(t => {
     const mQ = !q ||
@@ -360,18 +360,19 @@ function filterTickets() {
       (t.description && t.description.toLowerCase().includes(q));
     const mS = showArchived
       ? t.archived === true
-      : t.archived !== true && (!fs || t.status === fs);
+      : (t.archived !== true || t.hasNewReply) && (!fs || t.status === fs);
     const mC = !fc || t.contactMethod === fc;
     const mI = !fi || t.issueType === fi;
     return mQ && mS && mC && mI;
   });
-  if (sort) {
-    filtered.sort((a, b) => {
-      const aReceived = new Date(`${a.dateReceived || ''}T${a.timeReceived || '00:00:00'}`).getTime();
-      const bReceived = new Date(`${b.dateReceived || ''}T${b.timeReceived || '00:00:00'}`).getTime();
-      return sort === 'received-asc' ? aReceived - bReceived : bReceived - aReceived;
-    });
-  }
+  filtered.sort((a, b) => {
+    const aUnread = a.hasNewReply ? 1 : 0;
+    const bUnread = b.hasNewReply ? 1 : 0;
+    if (aUnread !== bUnread) return bUnread - aUnread;
+    const aReceived = new Date(`${a.dateReceived || ''}T${a.timeReceived || '00:00:00'}`).getTime();
+    const bReceived = new Date(`${b.dateReceived || ''}T${b.timeReceived || '00:00:00'}`).getTime();
+    return sort === 'received-asc' ? aReceived - bReceived : bReceived - aReceived;
+  });
   renderTable(filtered);
 }
 
