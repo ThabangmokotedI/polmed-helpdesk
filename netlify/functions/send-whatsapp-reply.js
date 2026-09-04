@@ -15,7 +15,7 @@ const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
 const projectId     = process.env.FIREBASE_PROJECT_ID;
 const graphVersion  = 'v21.0';
 
-if (!admin.apps.length) {
+if (!admin.apps || !admin.apps.length) {
   const serviceAccountRaw = process.env.FIREBASE_SERVICE_ACCOUNT;
   if (serviceAccountRaw && projectId) {
     try {
@@ -61,7 +61,7 @@ exports.handler = async function (event) {
     };
   }
 
-  if (!admin.apps.length) {
+  if (!admin.apps || !admin.apps.length) {
     return { statusCode: 500, body: JSON.stringify({ ok: false, error: 'Server not configured.' }) };
   }
 
@@ -121,7 +121,7 @@ exports.handler = async function (event) {
 
   // ── Log the reply onto the ticket's conversation thread (best-effort) ───────
   try {
-    if (admin.apps.length && ticketId) {
+    if (admin.apps && admin.apps.length && ticketId) {
       const db = admin.firestore();
       const snap = await db.collection('tickets').where('ticketId', '==', ticketId).limit(1).get();
       if (!snap.empty) {

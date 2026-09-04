@@ -10,7 +10,7 @@ const graphVersion  = 'v21.0';
 const TEMPLATE_NAME = 'REPLACE_WITH_APPROVED_TEMPLATE_NAME';
 const HARARE_TIME_ZONE = 'Africa/Harare';
 
-if (!admin.apps.length) {
+if (!admin.apps || !admin.apps.length) {
   const serviceAccountRaw = process.env.FIREBASE_SERVICE_ACCOUNT;
   if (!serviceAccountRaw || !projectId) {
     console.error('Missing FIREBASE_SERVICE_ACCOUNT or FIREBASE_PROJECT_ID env vars');
@@ -47,7 +47,7 @@ function json(statusCode, body) {
 
 exports.handler = async function (event) {
   if (event.httpMethod !== 'POST') return json(405, { ok: false, error: 'Method not allowed' });
-  if (!accessToken || !phoneNumberId || !admin.apps.length) {
+  if (!accessToken || !phoneNumberId || !admin.apps || !admin.apps.length) {
     return json(500, { ok: false, error: 'Server is not configured for WhatsApp or Firebase.' });
   }
 

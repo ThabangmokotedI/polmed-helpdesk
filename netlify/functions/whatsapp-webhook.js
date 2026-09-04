@@ -34,7 +34,7 @@ const ALERT_COOLDOWN_MS = 30 * 60 * 1000;
 
 const OPEN_STATUSES = ['New', 'In Progress'];
 
-if (!admin.apps.length) {
+if (!admin.apps || !admin.apps.length) {
   const serviceAccountRaw = process.env.FIREBASE_SERVICE_ACCOUNT;
   if (!serviceAccountRaw || !projectId) {
     console.error('Missing FIREBASE_SERVICE_ACCOUNT or FIREBASE_PROJECT_ID env vars');
@@ -53,7 +53,7 @@ if (!admin.apps.length) {
 
 // ── Health heartbeat + alert email ───────────────────────────────────────────
 async function recordHealth(status, errorMessage) {
-  if (!admin.apps.length) return;
+  if (!admin.apps || !admin.apps.length) return;
   const db  = admin.firestore();
   const ref = db.collection('system').doc('webhookHealth');
   const now = admin.firestore.FieldValue.serverTimestamp();

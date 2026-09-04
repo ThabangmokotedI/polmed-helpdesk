@@ -18,7 +18,7 @@ const graphVersion  = 'v21.0';
 
 const MAX_BYTES = 5 * 1024 * 1024; // 5MB — stay comfortably under Netlify's payload limit
 
-if (!admin.apps.length) {
+if (!admin.apps || !admin.apps.length) {
   const serviceAccountRaw = process.env.FIREBASE_SERVICE_ACCOUNT;
   if (serviceAccountRaw && projectId) {
     try {
@@ -77,7 +77,7 @@ exports.handler = async function (event) {
   if (!accessToken || !phoneNumberId) {
     return { statusCode: 500, body: JSON.stringify({ ok: false, error: 'Server not configured for sending WhatsApp messages.' }) };
   }
-  if (!admin.apps.length) {
+  if (!admin.apps || !admin.apps.length) {
     return { statusCode: 500, body: JSON.stringify({ ok: false, error: 'Server not configured.' }) };
   }
 

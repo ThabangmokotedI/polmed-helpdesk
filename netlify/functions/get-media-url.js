@@ -3,7 +3,7 @@ const admin = require('firebase-admin');
 const projectId = process.env.FIREBASE_PROJECT_ID;
 const SIGNED_URL_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 
-if (!admin.apps.length) {
+if (!admin.apps || !admin.apps.length) {
   const serviceAccountRaw = process.env.FIREBASE_SERVICE_ACCOUNT;
   if (serviceAccountRaw && projectId) {
     try {
@@ -52,7 +52,7 @@ exports.handler = async function (event) {
     return { statusCode: 405, body: JSON.stringify({ ok: false, error: 'Method not allowed' }) };
   }
 
-  if (!admin.apps.length) {
+  if (!admin.apps || !admin.apps.length) {
     return { statusCode: 500, body: JSON.stringify({ ok: false, error: 'Server not configured.' }) };
   }
 

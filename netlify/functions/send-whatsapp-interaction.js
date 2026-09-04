@@ -24,7 +24,7 @@ const graphVersion  = 'v21.0';
 // even if someone calls this endpoint directly instead of using the UI.
 const ALLOWED_REACTION_EMOJIS = ['👍', '🙏', '✅', '❤️', '😊', '🎉'];
 
-if (!admin.apps.length) {
+if (!admin.apps || !admin.apps.length) {
   const serviceAccountRaw = process.env.FIREBASE_SERVICE_ACCOUNT;
   if (serviceAccountRaw && projectId) {
     try {
@@ -80,7 +80,7 @@ exports.handler = async function (event) {
     };
   }
 
-  if (!admin.apps.length) {
+  if (!admin.apps || !admin.apps.length) {
     return { statusCode: 500, body: JSON.stringify({ ok: false, error: 'Server not configured.' }) };
   }
 
