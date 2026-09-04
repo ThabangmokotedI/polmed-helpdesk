@@ -1404,9 +1404,13 @@ window.sendWhatsAppReply = async function () {
     const url = isQuotedReply ? '/.netlify/functions/send-whatsapp-interaction' : '/.netlify/functions/send-whatsapp-reply';
     const payload = isQuotedReply ? { ticketId: t.ticketId, phoneNumber: t.phoneNumber, targetMessageId: currentReplyTarget.waMessageId, mode: 'reply', message } : { ticketId: t.ticketId, phoneNumber: t.phoneNumber, message };
     const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` }, body: JSON.stringify(payload) });
-    const result = await res.json();
+    const responseText = await res.text();
+    let result = {};
+    try { result = responseText ? JSON.parse(responseText) : {}; } catch { result = { error: responseText || 'Failed to parse server response.' }; }
+
     if (!res.ok || !result.ok) {
-      throw new Error( result?.error?.error?.message || (typeof result?.error === 'string' ? result.error : null) || 'Send failed. Note: WhatsApp only allows free-form replies within 24 hours of the member\'s last message — after that, only a pre-approved template can be sent.' );
+      const backendMessage = result?.error?.error?.message || result?.error?.message || result?.error || (typeof result?.message === 'string' ? result.message : null) || 'Send failed. Note: WhatsApp only allows free-form replies within 24 hours of the member\'s last message — after that, only a pre-approved template can be sent.';
+      throw new Error(backendMessage);
     }
     alert('Reply sent to the member on WhatsApp.');
     updateDoc(doc(db, 'tickets', t.id), { updatedAt: serverTimestamp() }).catch(() => {});

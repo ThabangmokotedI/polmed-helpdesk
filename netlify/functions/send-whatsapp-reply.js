@@ -31,6 +31,23 @@ if (!admin.apps.length) {
   }
 }
 
+async function verifyAgent(event) {
+  const authHeader = event.headers?.authorization || event.headers?.Authorization || '';
+  const match = authHeader.match(/^Bearer (.+)$/);
+  if (!match) return { ok: false, statusCode: 401, error: 'Missing Authorization header' };
+
+  const idToken = match[1];
+  try {
+    const decoded = await admin.auth().verifyIdToken(idToken);
+    const agentSnap = await admin.firestore().collection('agents').doc(decoded.uid).get();
+    if (!agentSnap.exists) return { ok: false, statusCode: 403, error: 'No agent record for this account' };
+    return { ok: true, uid: decoded.uid, email: decoded.email };
+  } catch (err) {
+    console.error('Token verification failed:', err.message);
+    return { ok: false, statusCode: 401, error: 'Invalid or expired session. Please sign in again.' };
+  }
+}
+
 exports.handler = async function (event) {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: JSON.stringify({ ok: false, error: 'Method not allowed' }) };
@@ -42,6 +59,15 @@ exports.handler = async function (event) {
       statusCode: 500,
       body: JSON.stringify({ ok: false, error: 'Server not configured for sending WhatsApp messages.' })
     };
+  }
+
+  if (!admin.apps.length) {
+    return { statusCode: 500, body: JSON.stringify({ ok: false, error: 'Server not configured.' }) };
+  }
+
+  const agentCheck = await verifyAgent(event);
+  if (!agentCheck.ok) {
+    return { statusCode: agentCheck.statusCode, body: JSON.stringify({ ok: false, error: agentCheck.error }) };
   }
 
   let body;
@@ -110,7 +136,7 @@ exports.handler = async function (event) {
           conversation: admin.firestore.FieldValue.arrayUnion(entry),
           lastReply: message,
           lastReplyAt: admin.firestore.FieldValue.serverTimestamp(),
-          updatedBy: 'agent-reply',
+          updatedBy: agentCheck.email || 'agent-reply',
           updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
       }
