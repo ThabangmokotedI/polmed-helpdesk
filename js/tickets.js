@@ -157,7 +157,7 @@ function ticketActivityTime(t) {
 }
 
 function listenToTickets() {
-  const q = query(collection(db, 'tickets'), orderBy('createdAt', 'desc'), limit(TICKET_PAGE_SIZE));
+  const q = query(collection(db, 'tickets'), orderBy('updatedAt', 'desc'), limit(TICKET_PAGE_SIZE));
   onSnapshot(q, (snapshot) => {
     liveTickets = snapshot.docs
       .map(d => ({ id: d.id, ...d.data() }));
@@ -209,7 +209,7 @@ async function loadOlderTickets() {
   try {
     const olderQuery = query(
       collection(db, 'tickets'),
-      orderBy('createdAt', 'desc'),
+      orderBy('updatedAt', 'desc'),
       startAfter(olderTicketsCursor),
       limit(TICKET_PAGE_SIZE)
     );
