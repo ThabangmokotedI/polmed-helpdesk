@@ -215,7 +215,7 @@ async function sendTicketConfirmation(phoneNumber, ticketId) {
           recipient_type: 'individual',
           to: phoneNumber,
           type: 'text',
-          text: { body: `Thank you. Your POLMED Helpdesk ticket number is ${ticketId}.` }
+          text: { body: `Thank you for contacting the POLMED Connect Helpdesk. Your ticket reference is ${ticketId}. We will follow up with you shortly.` }
         })
       }
     );

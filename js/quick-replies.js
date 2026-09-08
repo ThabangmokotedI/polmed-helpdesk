@@ -8,90 +8,25 @@
 
 const QUICK_REPLIES = [
   {
-    group: 'General',
+    group: 'Approved replies',
     items: [
-      {
-        label: 'Apology for delayed response',
-        text: `Good day, valued member.\n\nApologies for the delayed response — we've been receiving a high volume of queries. We'll get back to you as soon as possible.`
-      },
-      {
-        label: 'Not app-related — redirect to medical aid',
-        text: `Hi, thanks for reaching out. This WhatsApp line is for the POLMED Connect app only.\n\nFor your medical aid query, please email polmed@medscheme.co.za or call the POLMED Client Service Call Centre on 0860 765 633.\n\nIf you don't have the POLMED Connect app yet, you can download it at www.polmedconnect.co.za`
-      },
-      {
-        label: 'Redirect — general query numbers',
-        text: `For that query, please contact:\n\nGeneral queries: polmed@medscheme.co.za\nMembership queries: polmedmembership@medscheme.co.za\nChronic medicine/Authorisations: 0860 765 633 or polmedcmm@medscheme.co.za\nBack and neck programme: polmedcbnrp@medscheme.co.za\nCall Centre: 0860 765 633`
-      },
+      { label: 'Member sends a greeting message', text: `Thank you for contacting the POLMED Connect Helpdesk.\n\nPlease note that this channel is strictly for queries and support related to the POLMED Connect Mobile App.\nIf your enquiry relates to medical aid benefits, claims, authorisations, or any other general matter, kindly WhatsApp 0600702547 or call 0860765633 for assistance.\n\nIf you have a query regarding the app, please describe the issue and one of our agents will get back to you as soon as possible.` },
+      { label: 'Wants to speak to an agent', text: `Good day, Valued Member. You are speaking to [Name]. Please let me know how I can help.` },
+      { label: 'Query is not related to the app', text: `Good day, Valued Member\n\nFor better assistance with your query, please contact the POLMED Client Service Call Centre on 0860765633 or send a WhatsApp text to 0600702547.\n\nThis channel is strictly for queries related to the *POLMED Connect Mobile App*.` },
+      { label: 'Member cannot register', text: `Good day, Valued Member\n\nApologies for this inconvenience.\nKindly send the following details so that we can create an account for you:\n* Membership number\n* ID number\n* Email address` },
+      { label: 'Assisted member with registering', text: `Thank you. Your profile has been created successfully.\n\nPlease log into the app with the below details:\n- *Username:*\n- *Password:*\n_To change your password, use the 'Forgot Password' feature._\n\nYou can now explore the exciting features our app has to offer. Please let me know if there anything else I can assist with.` },
+      { label: 'Member gets a blank screen after requesting OTP', text: `Good day, Valued Member\n\nIf your screen goes blank when registering on the POLMED Connect App, please choose the option which sends your OTP to *both* your *email address and phone number*. _If this does not work, you can send us the following details and we'll create the account for you:_\n\n* Membership number\n* ID number\n* Email address` },
+      { label: 'Member wants to update their contact details', text: `Good day, Valued Member\n\n*To update your contact details, fill in the following form:*\nhttps://www.polmed.co.za/wp-content/uploads/2024/12/POLMED-Contact-Details-Forms.pdf\n\n*To update your Adult Dependant's details, fill in the following form:*\nhttps://www.polmed.co.za/wp-content/uploads/2026/02/Adult-Dependent-Contact-Details-form.pdf\n\nPlease ensure that you submit the forms to *polmedmembership@medscheme.co.za*. If you require assistance completing the forms, please contact the POLMED Client Service Call Centre on 0860765633.` },
+      { label: 'Wants to nominate a GP', text: `Good day, Valued Member\n\n*To nominate a GP, kindly fill in the following form:*\nhttps://www.polmed.co.za/wp-content/uploads/2025/11/GP-Nomination-form.pdf\n\nPlease return your completed form to *polmedgpnomination@medscheme.co.za*` },
+      { label: 'Enquiring about a potential scam or fraud', text: `Good day, Valued Member\n\nIf you receive suspicious communication, we recommend that you do not engage with the caller and do not share any details. You may report the matter directly to POLMED through their official contact channels so that they can investigate further.\n\n*Polmed Fraud Hotline:*\nCall: 0800 112 811\nSMS: 33490\nEmail: information@whistleblowing.co.za\nEmail: fraud@medscheme.co.za\n\nIf you have a query related to the POLMED Connect app, please let us know and we will gladly assist.` },
+      { label: "Searching for a specific service provider / wants to know if they're in POLMED's network", text: `Good day, Valued Member\n\nTo check whether your service provider is under the POLMED network, kindly log onto the app and follow these steps:\n1. Open the menu on the top left corner\n2. Select *Service Provider Search*\n3. Allow POLMED Connect to access your location while using the app (this allows for more convenient search options)\n3. Search for your service provider by name. If they do not appear, use the *filter* on the top right corner. This will allow you to search by address, KM radius, and provider type.\n4. Apply the filter and search again.\n\nIf your provider still does not appear, then they may not be part of the POLMED network.\nTo *nominate a GP*, kindly fill in the following form:\nhttps://www.polmed.co.za/wp-content/uploads/2025/11/GP-Nomination-form.pdf\n\nPlease return your completed form to *polmedgpnomination@medscheme.co.za*` },
+      { label: 'Wants to access Digital Membership Card', text: `Good day, Valued Member\n\nYou can access your virtual membership card through the POLMED Connect app. Here's how:\n1. Log into the app\n2. Click on the menu on the top left corner\n3. Select *Digital Membership Card*\n4. To access the detailed view of your card, tap the three dots on the top right corner, and select *My Card*\n\nIf you are not seeing any of these pages on the app, kindly send a screenshot and we will look into it.` },
+      { label: 'Wants Member Certificate', text: `Good day, Valued Member\n\nYou can access your member certificate through the POLMED Connect app. Here's how:\n1. Log into the app\n2. Click on the menu on the top left corner\n3. Select *My Documents*\n4. Click on your *Member Certificate*, and enter your ID number to view the document\n\nIf you are not seeing any of these pages on the app, kindly send a screenshot and we will look into it.` },
+      { label: 'Wants Tax Certificate', text: `Good day, Valued Member\n\nYou can access your tax certificate through the POLMED Connect app. Here's how:\n1. Log into the app\n2. Click on the menu on the top left corner\n3. Select *My Documents*\n4. Choose the year you'd like to view\n5. Click on your *Tax Certificate*, and enter your ID number to view the document\n\nIf you are not seeing any of these pages on the app, kindly send a screenshot and we will look into it.` },
+      { label: 'Issue is resolved', text: `Thank you for your patience. We sincerely apologise for the inconvenience and trust that you will enjoy using the app.\n\nShould you have any questions related to the POLMED Connect app, please feel free to contact us here. Enjoy the rest of your day.` },
+      { label: 'Issue resolved — member wants to leave a review', text: `It's a pleasure. Enjoy your day further.\n\nPlease let us know if you experience any issues with the app, and we'll be happy to assist.\nKindly leave us a review on the app store if you are satisfied with our services:\n- Play Store: https://play.google.com/store/apps/details?id=com.polmed.connect\n- App Store: https://apps.apple.com/us/app/polmed-connect/id6748287604\n\n*POLMED Connect*\n_Your Wellness At Your Fingertips_` },
     ]
-  },
-  {
-    group: 'Login & registration',
-    items: [
-      {
-        label: 'How to register on the app',
-        text: `Here's how to register on POLMED Connect:\n\n1. Open the app and tap Register (under the Log In button)\n2. Enter your ID and membership numbers (no spaces or errors)\n3. Tap Register\n4. Choose to receive your OTP via both Email and SMS\n5. Enter the OTP when it arrives, then tap Submit\n6. Create a username and password (password needs at least 8 characters, 1 uppercase, 1 lowercase, 1 number, 1 special character)\n7. Tap Submit\n\nNote: this app isn't linked to any older POLMED app, so you'll need to register fresh here. Let us know if you hit any issues!`
-      },
-      {
-        label: 'Cannot log in',
-        text: `The POLMED Connect app isn't linked to any older POLMED app or website, so you'll need to register a new account here first.\n\nOnce registered, log in with that new username and password. By default your username is your email address unless you changed it during registration.\n\nStill getting a "Login failed" message? Let us know and we'll assist further.`
-      },
-      {
-        label: 'Not receiving OTP via email',
-        text: `On the latest version of POLMED Connect, you can choose to receive your OTP via email or SMS, and the OTP window has been extended.\n\nPlease make sure you have the latest version of the app installed. If you're still not receiving it, let us know.`
-      },
-      {
-        label: 'Screen goes blank during registration',
-        text: `If your screen goes blank while registering, please restart the registration process. When asked where to receive your OTP, select "Send to both" — this usually resolves it.`
-      },
-      {
-        label: 'Change email/phone number for OTP',
-        text: `For security, POLMED Connect uses the contact details on your POLMED membership record. To update them, please fill in this form and email it to polmed@medscheme.co.za:\nhttps://www.polmed.co.za/wp-content/uploads/2024/12/POLMED-Contact-Details-Forms.pdf\n\nOnce updated, please allow 24 hours before registering on the app. Need help with the form? Call 0860 765 633.`
-      },
-    ]
-  },
-  {
-    group: 'Wellness tracker',
-    items: [
-      {
-        label: 'Wellness tracker not counting steps',
-        text: `If your steps show correctly in Google Fit/Strava but not in POLMED Connect, this is usually a sync or permission issue. Try:\n\n1. Check permissions — Android: Samsung Health Connect; iPhone: Apple Health. Make sure step/activity sharing is on.\n2. Refresh the Wellness Tracker in the app, or disconnect and reconnect your health app.\n3. Make sure POLMED Connect and your health app are both updated.\n4. Check battery/data-saving settings aren't blocking background activity.\n5. Restart your phone.\n6. Step data can take a few hours to sync — check again later the same day.\n\nStill not showing after trying these? Let us know and we'll look into it.`
-      },
-    ]
-  },
-  {
-    group: 'Documents & membership',
-    items: [
-      {
-        label: 'Find a service provider / check network',
-        text: `To check if your service provider is in the POLMED network:\n\n1. Open the menu (top left)\n2. Select Service Provider Search\n3. Allow location access for better results\n4. Search by name, or use the filter (top right) to search by address, radius, or provider type\n\nProvider still not showing? They may not be in the POLMED network yet. To nominate a GP, fill in this form and email it to polmedgpnomination@medscheme.co.za:\nhttps://www.polmed.co.za/wp-content/uploads/2025/11/GP-Nomination-form.pdf`
-      },
-      {
-        label: 'Access Digital Membership Card',
-        text: `To view your digital membership card:\n\n1. Log into the app\n2. Open the menu (top left)\n3. Select Digital Membership Card\n4. Tap the three dots (top right) → My Card for the detailed view\n\nNot seeing this option? Send us a screenshot and we'll look into it.`
-      },
-      {
-        label: 'Access Member Certificate',
-        text: `To view your member certificate:\n\n1. Log into the app\n2. Open the menu (top left)\n3. Select My Documents\n4. Tap Member Certificate and enter your ID number to view it\n\nNot seeing this option? Send us a screenshot and we'll look into it.`
-      },
-      {
-        label: 'Access Tax Certificate',
-        text: `To view your tax certificate:\n\n1. Log into the app\n2. Open the menu (top left)\n3. Select My Documents\n4. Choose the relevant year\n5. Tap Tax Certificate and enter your ID number to view it\n\nNot seeing this option? Send us a screenshot and we'll look into it.`
-      },
-      {
-        label: 'Multiple membership numbers explained',
-        text: `It's normal to see more than one membership number on your digital card or in the app — all numbers shown are valid and correct. You're welcome to keep using whichever one you're familiar with.`
-      },
-    ]
-  },
-  {
-    group: 'Wrap-up',
-    items: [
-      {
-        label: 'Ask for an app store review',
-        text: `If you have a moment, we'd really appreciate a review on the app store:\n\nPlay Store: https://play.google.com/store/apps/details?id=com.polmed.connect\nApp Store: https://apps.apple.com/us/app/polmed-connect/id6748287604\n\nThank you for using POLMED Connect!`
-      },
-    ]
-  },
+  }
 ];
 
 // Populates the <select id="quick-reply-select"> dropdown in the ticket
@@ -101,7 +36,7 @@ function populateQuickReplies() {
   const select = document.getElementById('quick-reply-select');
   if (!select) return;
 
-  select.innerHTML = '<option value="">💬 Insert a quick reply…</option>' +
+  select.innerHTML = '<option value="">Insert a quick reply…</option>' +
     QUICK_REPLIES.map(group =>
       `<optgroup label="${group.group}">` +
       group.items.map((item, i) =>
@@ -119,7 +54,8 @@ function populateQuickReplies() {
 
     const textarea = document.getElementById('detail-reply-text');
     if (textarea) {
-      const insertText = item.text;
+      const insertText = item.text.replace('[Name]',
+        typeof window.getPolmedAgentName === 'function' ? window.getPolmedAgentName() : '[Name]');
       if (textarea.value.trim() && !confirm('Replace the current reply text with this template?')) {
         this.value = '';
         return;

@@ -126,9 +126,32 @@ function setAgentUI(email, role) {
   document.getElementById('agent-avatar').textContent = name[0]?.toUpperCase() || 'A';
   const roleEl = document.getElementById('agent-role');
   if (roleEl) {
-    roleEl.textContent = role === 'supervisor' ? '🛡 Supervisor' : 'Agent';
+    roleEl.innerHTML = role === 'supervisor' ? `${lucideIcon('shield')} Supervisor` : 'Agent';
     roleEl.className   = 'agent-role role-' + role;
   }
+}
+
+const LUCIDE_PATHS = {
+  alert: '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4M12 17h.01"/>',
+  archive: '<path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4"/>',
+  bot: '<rect x="4" y="7" width="16" height="12" rx="2"/><path d="M12 3v4M8 12h.01M16 12h.01M8 16h8"/>',
+  briefcase: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12h18"/>',
+  check: '<path d="m5 12 4 4L19 6"/>',
+  download: '<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>',
+  mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
+  paperclip: '<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
+  pencil: '<path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z"/>',
+  phone: '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.78.62 2.63a2 2 0 0 1-.45 2.11L8 9.73a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.85.29 1.73.5 2.63.62A2 2 0 0 1 22 16.92Z"/>',
+  refresh: '<path d="M21 12a9 9 0 0 0-15.3-6.4L3 8M3 3v5h5M3 12a9 9 0 0 0 15.3 6.4L21 16M21 21v-5h-5"/>',
+  reply: '<path d="m9 17-5-5 5-5M4 12h10a6 6 0 0 1 6 6v1"/>',
+  shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/>',
+  sparkles: '<path d="m12 3-1.5 4.5L6 9l4.5 1.5L12 15l1.5-4.5L18 9l-4.5-1.5ZM19 14l-.8 2.2L16 17l2.2.8L19 20l.8-2.2L22 17l-2.2-.8ZM5 14l-.6 1.4L3 16l1.4.6L5 18l.6-1.4L7 16l-1.4-.6Z"/>',
+  x: '<path d="M18 6 6 18M6 6l12 12"/>',
+};
+
+function lucideIcon(name, label = '') {
+  const accessible = label ? ` role="img" aria-label="${escapeHtml(label)}"` : ' aria-hidden="true"';
+  return `<svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${accessible}>${LUCIDE_PATHS[name] || ''}</svg>`;
 }
 
 function updateEnvironmentBadge() {
@@ -170,8 +193,8 @@ function listenToTickets() {
         // New / unread tickets are always pinned above everything else,
         // so they never get buried by scrolling. Within each group,
         // most recently active ticket (including replies) comes first.
-        const aPin = (a.hasNewReply || a.status === 'New') ? 1 : 0;
-        const bPin = (b.hasNewReply || b.status === 'New') ? 1 : 0;
+        const aPin = (a.hasNewReply || displayStatus(a) === 'New') ? 1 : 0;
+        const bPin = (b.hasNewReply || displayStatus(b) === 'New') ? 1 : 0;
         if (aPin !== bPin) return bPin - aPin;
         return ticketActivityTime(b) - ticketActivityTime(a);
       });
@@ -246,7 +269,7 @@ function listenToHealth() {
     const isProblem = data.lastStatus === 'config_error' || data.lastStatus === 'processing_error';
     if (isProblem) {
       const when = data.lastErrorAt?.toDate ? formatHarareDateTime(data.lastErrorAt.toDate()) : '';
-      banner.textContent = `⚠ WhatsApp webhook issue (${data.lastStatus}): ${data.lastErrorMessage || ''} — ${when}`;
+      banner.innerHTML = `${lucideIcon('alert', 'WhatsApp webhook issue')} WhatsApp webhook issue (${escapeHtml(data.lastStatus)}): ${escapeHtml(data.lastErrorMessage || '')} — ${escapeHtml(when)}`;
       banner.style.display = 'block';
     } else {
       banner.style.display = 'none';
@@ -269,6 +292,28 @@ function renderStats() {
   document.getElementById('stat-wa').textContent    = wa;
   document.getElementById('stat-email').textContent = em;
   renderUnreadCount();
+}
+
+function timestampMs(value) {
+  if (!value) return 0;
+  if (typeof value.toDate === 'function') return value.toDate().getTime();
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function displayStatus(ticket) {
+  if (ticket.status !== 'New') return ticket.status || '';
+  const conversation = Array.isArray(ticket.conversation) ? ticket.conversation : [];
+  const lastMemberAt = Math.max(
+    timestampMs(ticket.lastMemberMessageAt),
+    ...conversation.filter(entry => entry.from === 'member').map(entry => timestampMs(entry.at))
+  );
+  const lastAgentAt = Math.max(
+    ...conversation.filter(entry => entry.from === 'agent').map(entry => timestampMs(entry.at))
+  );
+  const staleAfterMs = 5 * 24 * 60 * 60 * 1000;
+  if (lastMemberAt && lastAgentAt > lastMemberAt && Date.now() - lastMemberAt >= staleAfterMs) return 'Stale';
+  return 'New';
 }
 
 // ── Unread notifications: badge + flashing tab title + sound alert ───────────
@@ -303,7 +348,7 @@ function startTitleFlash(count) {
   if (flashInterval) return; // already flashing
   let showAlert = true;
   flashInterval = setInterval(() => {
-    document.title = showAlert ? `🔴 (${count}) New reply!` : BASE_TITLE;
+    document.title = showAlert ? `(${count}) New reply!` : BASE_TITLE;
     showAlert = !showAlert;
   }, 1000);
 }
@@ -358,9 +403,10 @@ function filterTickets() {
       (t.identifier  && String(t.identifier).toLowerCase().includes(q)) ||
       (t.issueType   && t.issueType.toLowerCase().includes(q))   ||
       (t.description && t.description.toLowerCase().includes(q));
+    const status = displayStatus(t);
     const mS = showArchived
       ? t.archived === true
-      : (t.archived !== true || t.hasNewReply) && (!fs || t.status === fs);
+      : (t.archived !== true || t.hasNewReply) && (!fs || status === fs);
     const mC = !fc || t.contactMethod === fc;
     const mI = !fi || t.issueType === fi;
     return mQ && mS && mC && mI;
@@ -389,7 +435,7 @@ function renderTable(list) {
     return;
   }
   el.innerHTML = list.map(t => {
-    const badge = statusBadge(t.status);
+    const badge = statusBadge(displayStatus(t));
     const ch    = contactIcon(t.contactMethod);
     const date  = t.dateReceived || (t.createdAt?.toDate ? formatHarareDate(t.createdAt.toDate()) : '—');
     const unreadDot = t.hasNewReply
@@ -584,7 +630,6 @@ const ISSUE_KEYWORDS = {
   'Membership & documents':     ['membership card', 'member number', 'membership number', 'certificate', 'proof of membership', 'service provider', 'psychologist', 'doctor', 'network provider'],
   'Wellness tracker':           ['wellness', 'step tracker', 'points', 'rewards', 'fitness tracker'],
   'Feature malfunction':        ['not working', 'error', 'crash', 'bug', 'broken', 'glitch', 'won\'t load', 'wont load'],
-  'Huawei user':                ['huawei'],
 };
 
 window.suggestFromConversation = function () {
@@ -797,10 +842,10 @@ function viewTicket(id) {
   if (!t) return;
   editingId = id;
   document.getElementById('detail-tid').textContent   = t.ticketId || '—';
-  document.getElementById('detail-badge').innerHTML    = statusBadge(t.status);
-  const sourceLabel = t.source === 'whatsapp-webhook' ? '🤖 Auto (WhatsApp)'
-                    : t.source === 'email-webhook'     ? '🤖 Auto (Email)'
-                    : '✍️ Manual';
+  document.getElementById('detail-badge').innerHTML    = statusBadge(displayStatus(t));
+  const sourceLabel = t.source === 'whatsapp-webhook' ? `${lucideIcon('bot')} Auto (WhatsApp)`
+                    : t.source === 'email-webhook'     ? `${lucideIcon('bot')} Auto (Email)`
+                    : `${lucideIcon('pencil')} Manual`;
   const canReplyByWhatsApp = t.contactMethod === 'WhatsApp' && !!t.phoneNumber;
   const suggestedReply = `Thank you for contacting the POLMED Connect Helpdesk. Your ticket reference is ${t.ticketId}. We will follow up with you shortly.`;
   const possibleDuplicate = t.possibleDuplicateOf && !t.possibleDuplicateReviewed
@@ -832,7 +877,7 @@ function viewTicket(id) {
       const anonymizedNote = t.anonymized ? `
     <div class="detail-section" style="margin-bottom:10px">
       <div style="display:inline-flex;align-items:center;gap:6px;background:#F1F5F9;color:#475569;border:1px solid #CBD5E1;border-radius:8px;padding:6px 12px;font-size:12.5px;font-weight:500">
-        🗄 Anonymized — personal data removed after 12 months per POPIA retention rules. Status and timing stats are preserved.
+        ${lucideIcon('archive')} Anonymized — personal data removed after 12 months per POPIA retention rules. Status and timing stats are preserved.
       </div>
     </div>` : '';
 
@@ -846,7 +891,7 @@ function viewTicket(id) {
       returningMemberNote = `
         <div class="detail-section" style="margin-bottom:10px">
           <div style="display:inline-flex;align-items:center;gap:6px;background:#EEF2FF;color:#4338CA;border:1px solid #C7D2FE;border-radius:8px;padding:6px 12px;font-size:12.5px;font-weight:500">
-            🔁 Returning member — ${priorTickets.length} previous ticket${priorTickets.length === 1 ? '' : 's'}
+            ${lucideIcon('refresh')} Returning member — ${priorTickets.length} previous ticket${priorTickets.length === 1 ? '' : 's'}
             ${priorWithId ? ` · usually identifies as <strong>${escapeHtml(priorWithId.identifier)}</strong>` : ''}
           </div>
         </div>`;
@@ -861,7 +906,7 @@ function viewTicket(id) {
       <div class="detail-item"><label>Contact Method</label><span>${escapeHtml(t.contactMethod) || '—'}</span></div>
       <div class="detail-item"><label>Member Identifier</label><span>${escapeHtml(t.identifier) || '—'}</span></div>
       <div class="detail-item"><label>Issue Type</label><span>${escapeHtml(t.issueType) || '—'}</span></div>
-      <div class="detail-item"><label>Status</label><span>${statusBadge(t.status)}</span></div>
+      <div class="detail-item"><label>Status</label><span>${statusBadge(displayStatus(t))}</span></div>
       <div class="detail-item"><label>Date Received</label><span>${escapeHtml(t.dateReceived) || '—'}</span></div>
       <div class="detail-item"><label>Time Received</label><span>${escapeHtml(t.timeReceived) || '—'}</span></div>
       <div class="detail-item"><label>Source</label><span>${sourceLabel}</span></div>
@@ -886,7 +931,7 @@ function viewTicket(id) {
       <div id="conversation-thread" class="conversation-thread"></div>
     </div>` : ''}
     <div class="detail-section">
-      <div class="detail-section-label">Description</div>
+      <div class="detail-section-label">Summary</div>
       <div class="detail-block">${escapeHtml(t.description) || '—'}</div>
     </div>
     ${t.resolutionDescription ? `<div class="detail-section"><div class="detail-section-label">Resolution Notes</div><div class="detail-block">${escapeHtml(t.resolutionDescription)}</div></div>` : ''}
@@ -897,11 +942,15 @@ function viewTicket(id) {
       <div id="quoted-reply-banner" style="display:none"></div>
       <div style="display:none;align-items:center;gap:8px;margin-bottom:8px">
         <input type="file" id="reply-file-input" accept="image/*,video/*,.pdf,.doc,.docx" style="display:none" onchange="onAttachmentSelected(this)">
-        <button type="button" class="btn btn-sm" onclick="document.getElementById('reply-file-input').click()">📎 Attach file</button>
+        <button type="button" class="btn btn-sm" onclick="document.getElementById('reply-file-input').click()">${lucideIcon('paperclip')} Attach file</button>
         <span id="reply-file-name" style="font-size:12px;color:#6B8580;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
-        <button type="button" class="btn btn-sm" id="reply-file-clear" onclick="clearAttachment()" style="display:none">✕</button>
+        <button type="button" class="btn btn-sm" id="reply-file-clear" onclick="clearAttachment()" style="display:none">${lucideIcon('x', 'Clear attachment')}</button>
       </div>
       <select id="quick-reply-select" style="width:100%;margin-bottom:8px;padding:7px;border-radius:8px;border:1px solid #ddd;font:inherit;background:#fafafa"></select>
+      <div class="inline-emoji-row" aria-label="Approved inline emojis">
+        <span class="inline-emoji-label">Emoji</span>
+        <div id="inline-emoji-picker" class="inline-emoji-picker"></div>
+      </div>
       <textarea id="detail-reply-text" rows="3"
         style="width:100%;box-sizing:border-box;padding:8px;border-radius:8px;border:1px solid #ddd;font:inherit;resize:vertical"
       >${escapeHtml(suggestedReply)}</textarea>
@@ -913,6 +962,7 @@ function viewTicket(id) {
   if (canReplyByWhatsApp) {
     renderConversation(id);
     if (typeof populateQuickReplies === 'function') populateQuickReplies();
+    setupInlineEmojiPicker();
     setupTypingIndicator(id);
     renderTypingBanner(id);
     startTypingWatch(id);
@@ -1091,6 +1141,27 @@ function renderMediaHTML(mediaPath, type, size) {
 const REACTION_EMOJIS = ['👍', '🙏', '✅', '❤️', '😊', '🎉'];
 let currentReplyTarget = null; // { waMessageId, text } or null
 
+function setupInlineEmojiPicker() {
+  const picker = document.getElementById('inline-emoji-picker');
+  const textarea = document.getElementById('detail-reply-text');
+  if (!picker || !textarea) return;
+  picker.innerHTML = REACTION_EMOJIS.map(emoji =>
+    `<button type="button" class="inline-emoji-btn" data-emoji="${emoji}" title="Insert ${emoji}">${emoji}</button>`
+  ).join('');
+  picker.querySelectorAll('.inline-emoji-btn').forEach(button => {
+    button.addEventListener('click', () => {
+      const emoji = button.dataset.emoji;
+      const start = textarea.selectionStart ?? textarea.value.length;
+      const end = textarea.selectionEnd ?? start;
+      textarea.value = textarea.value.slice(0, start) + emoji + textarea.value.slice(end);
+      const cursor = start + emoji.length;
+      textarea.focus();
+      textarea.setSelectionRange(cursor, cursor);
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  });
+}
+
 function renderReplyBanner() {
   const el = document.getElementById('quoted-reply-banner');
   if (!el) return;
@@ -1103,7 +1174,7 @@ function renderReplyBanner() {
   const preview = (currentReplyTarget.text || '').slice(0, 120);
   el.innerHTML = `
     <div class="quoted-reply-text">Replying to: "${escapeHtml(preview)}"</div>
-    <button type="button" class="quoted-reply-cancel" onclick="cancelQuotedReply()">✕</button>
+    <button type="button" class="quoted-reply-cancel" onclick="cancelQuotedReply()">${lucideIcon('x', 'Cancel quoted reply')}</button>
   `;
 }
 
@@ -1268,7 +1339,7 @@ function renderConversation(id) {
 
     const actionBar = (!isAgent && entry.waMessageId)
       ? `<div class="convo-actions">
-          <button type="button" class="convo-action-btn" onclick="startQuotedReply('${entry.waMessageId}')" title="Reply to this message">↩</button>
+          <button type="button" class="convo-action-btn" onclick="startQuotedReply('${entry.waMessageId}')" title="Reply to this message">${lucideIcon('reply', 'Reply to this message')}</button>
           ${REACTION_EMOJIS.map(e => `<button type="button" class="convo-action-btn" onclick="sendReactionToMessage('${entry.waMessageId}', '${e}')" title="React">${e}</button>`).join('')}
         </div>`
       : '';
@@ -1341,7 +1412,7 @@ function renderTypingBanner(ticketId) {
     .map(([, info]) => info.email.split('@')[0]);
   if (others.length) {
     el.style.display = 'flex';
-    el.innerHTML = `✏️ <strong>${escapeHtml(others.join(', '))}</strong> ${others.length > 1 ? 'are' : 'is'} already replying to this member right now — check before you send.`;
+    el.innerHTML = `${lucideIcon('pencil')} <strong>${escapeHtml(others.join(', '))}</strong> ${others.length > 1 ? 'are' : 'is'} already replying to this member right now — check before you send.`;
   } else {
     el.style.display = 'none';
     el.innerHTML = '';
@@ -1385,11 +1456,26 @@ window.copyReply = function () {
 // Firebase ID token proving the caller is a logged-in Polmed agent. Without
 // this, anyone who found the Netlify function URL could send arbitrary
 // WhatsApp messages from Polmed's business number to any phone number.
+function agentDisplayName(email) {
+  const prefix = String(email || '').split('@')[0].toLowerCase();
+  const knownNames = { thabangm: 'Thabang', tshiamiso: 'Tshia' };
+  if (knownNames[prefix]) return knownNames[prefix];
+  return prefix
+    .replace(/[._-]+/g, ' ')
+    .split(' ')[0]
+    .replace(/^./, character => character.toUpperCase());
+}
+  window.getPolmedAgentName = () => agentDisplayName(currentUser?.email);
+
 window.sendWhatsAppReply = async function () {
   const t = tickets.find(x => x.id === editingId);
   if (!t || !t.phoneNumber) return;
   const textarea = document.getElementById('detail-reply-text');
-  const message = (textarea?.value || '').trim();
+  const typedMessage = (textarea?.value || '').trim();
+  const hasAgentReply = Array.isArray(t.conversation) && t.conversation.some(entry => entry.from === 'agent');
+  const message = hasAgentReply
+    ? typedMessage
+    : `Good day, Valued Member. You are speaking to ${agentDisplayName(currentUser?.email)}. Please let me know how I can help.`;
   if (!message) { alert('Reply text is empty.'); return; }
 
   const btn = document.getElementById('send-reply-btn');
@@ -1439,7 +1525,11 @@ function contactIcon(c) {
   if (c === 'WhatsApp') {
     return `<svg viewBox="0 0 24 24" width="14" height="14" fill="#25D366" style="vertical-align:-2px"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.39 1.26 4.81L2 22l5.42-1.36c1.36.72 2.9 1.13 4.62 1.13 5.46 0 9.91-4.45 9.91-9.91S17.5 2 12.04 2zm5.63 14.13c-.24.67-1.4 1.28-1.93 1.34-.53.06-1.02.25-3.44-.72-2.9-1.16-4.75-4.06-4.9-4.25-.14-.19-1.18-1.57-1.18-3s.75-2.13 1.02-2.42c.27-.29.58-.36.78-.36.19 0 .39 0 .56.01.18.01.42-.07.66.5.24.58.83 2 .9 2.14.07.14.12.31.02.5-.1.19-.15.31-.29.48-.15.17-.31.38-.44.51-.14.14-.3.3-.13.58.17.29.77 1.27 1.65 2.06 1.14 1.02 2.1 1.33 2.38 1.48.29.14.46.12.63-.07.17-.19.72-.84.92-1.13.19-.29.38-.24.63-.14.26.1 1.65.78 1.93.92.29.14.48.22.55.34.07.12.07.7-.17 1.37z"/></svg>`;
   }
-  return { 'Email': '📧', 'Phone call': '📞', 'In person': '🧑‍💼' }[c] || '';
+  return {
+    'Email': lucideIcon('mail', 'Email'),
+    'Phone call': lucideIcon('phone', 'Phone call'),
+    'In person': lucideIcon('briefcase', 'In person')
+  }[c] || '';
 }
 function clearForm() {
   ['f-contact','f-identifier','f-issue','f-description','f-date','f-time',
@@ -1668,7 +1758,7 @@ function renderStatusChart(subset) {
   const dataArr = statuses.map(s => ({
     label: s.label,
     color: s.color,
-    val: subset.filter(t => t.status === s.key).length
+    val: subset.filter(t => displayStatus(t) === s.key).length
   }));
   document.getElementById('status-chart').innerHTML = buildDonutHTML(dataArr);
 }
@@ -1758,7 +1848,7 @@ window.downloadStatsCSV = async function () {
   const resRate  = total ? Math.round((handled / total) * 100) : 0;
 
   const rows = [];
-  rows.push(['Polmed Connect Helpdesk — Report Export']);
+  rows.push(['POLMED Connect Helpdesk — Report Export']);
   rows.push(['Period', periodLabel]);
   rows.push(['Generated', formatHarareDateTime(new Date())]);
   rows.push([]);
@@ -1786,7 +1876,7 @@ window.downloadStatsCSV = async function () {
   rows.push(['Status Breakdown']);
   rows.push(['Status', 'Count']);
   ['New', 'In Progress', 'Resolved', 'Redirected', 'Unresolved', 'Merged'].forEach(s => {
-    rows.push([s, subset.filter(t => t.status === s).length]);
+    rows.push([s, subset.filter(t => displayStatus(t) === s).length]);
   });
   rows.push([]);
 
