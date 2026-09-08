@@ -840,6 +840,13 @@ function escapeHtml(str) {
 function viewTicket(id) {
   const t = tickets.find(x => x.id === id);
   if (!t) return;
+  if (t.status === 'Merged' && t.mergedIntoTicketDocId) {
+    const original = tickets.find(x => x.id === t.mergedIntoTicketDocId);
+    if (original) {
+      viewTicket(original.id);
+      return;
+    }
+  }
   editingId = id;
   document.getElementById('detail-tid').textContent   = t.ticketId || '—';
   document.getElementById('detail-badge').innerHTML    = statusBadge(displayStatus(t));

@@ -433,8 +433,17 @@ exports.handler = async function (event) {
     }
 
     if (!recentSnap.empty) {
-      const ticketDoc  = recentSnap.docs[0];
-      const ticketData = ticketDoc.data();
+      let ticketDoc  = recentSnap.docs[0];
+      let ticketData = ticketDoc.data();
+
+      const visitedTicketIds = new Set();
+      while (ticketData.status === 'Merged' && ticketData.mergedIntoTicketDocId && !visitedTicketIds.has(ticketDoc.id)) {
+        visitedTicketIds.add(ticketDoc.id);
+        const originalSnap = await db.collection('tickets').doc(ticketData.mergedIntoTicketDocId).get();
+        if (!originalSnap.exists) break;
+        ticketDoc = originalSnap;
+        ticketData = originalSnap.data();
+      }
 
       if (OPEN_STATUSES.includes(ticketData.status)) {
         const newEntry = {
