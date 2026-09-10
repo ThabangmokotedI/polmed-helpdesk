@@ -7,7 +7,7 @@ const accessToken   = process.env.WHATSAPP_ACCESS_TOKEN;
 const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
 const projectId     = process.env.FIREBASE_PROJECT_ID;
 const graphVersion  = 'v21.0';
-const TEMPLATE_NAME = 'REPLACE_WITH_APPROVED_TEMPLATE_NAME';
+const templateName  = process.env.WHATSAPP_PROACTIVE_TEMPLATE_NAME;
 const HARARE_TIME_ZONE = 'Africa/Harare';
 
 if (!admin.apps || !admin.apps.length) {
@@ -64,14 +64,18 @@ exports.handler = async function (event) {
   try { body = JSON.parse(event.body || '{}'); }
   catch { return json(400, { ok: false, error: 'Invalid JSON' }); }
 
-  const phoneNumber = String(body.phoneNumber || '').trim().replace(/[^0-9]/g, '');
+  let phoneNumber = String(body.phoneNumber || '').trim().replace(/[^0-9]/g, '');
+  if (/^0[0-9]{9}$/.test(phoneNumber)) phoneNumber = `27${phoneNumber.slice(1)}`;
   const memberName = String(body.memberName || '').trim().slice(0, 120);
   const note = String(body.note || '').trim().slice(0, 1000);
   if (!phoneNumber || !note) {
     return json(400, { ok: false, error: 'phoneNumber and note are required' });
   }
-  if (TEMPLATE_NAME === 'REPLACE_WITH_APPROVED_TEMPLATE_NAME') {
-    return json(500, { ok: false, error: 'Set TEMPLATE_NAME to an approved WhatsApp template name before sending.' });
+  if (!/^\d{8,15}$/.test(phoneNumber)) {
+    return json(400, { ok: false, error: 'Enter a valid WhatsApp number in international format, for example 27821234567.' });
+  }
+  if (!templateName) {
+    return json(500, { ok: false, error: 'Contact member is not configured. Set WHATSAPP_PROACTIVE_TEMPLATE_NAME to the approved Meta template name in Netlify.' });
   }
 
   const now = new Date();
@@ -95,7 +99,7 @@ exports.handler = async function (event) {
         to: phoneNumber,
         type: 'template',
         template: {
-          name: TEMPLATE_NAME,
+          name: templateName,
           language: { code: 'en_US' },
           components: [{ type: 'body', parameters: templateParameters }]
         }

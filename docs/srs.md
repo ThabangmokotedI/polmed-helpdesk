@@ -106,7 +106,7 @@ The UI currently supports these issue types:
 - Membership & documents
 - Wellness tracker
 - Feature malfunction
-- Huawei user
+- Stale
 - Not App Related
 - Unspecified / No Response
 

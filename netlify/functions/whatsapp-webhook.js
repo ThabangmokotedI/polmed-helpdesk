@@ -154,51 +154,6 @@ async function markMessageAsRead(messageId) {
   }
 }
 
-// WhatsApp list rows are limited to 24 characters per title, so a couple of
-// these are shortened from the full dropdown labels used elsewhere in the
-// app. The row "id" always carries the FULL original string, so whatever
-// gets stored on the ticket matches the exact values the dashboard's Issue
-// Type dropdown and filters expect.
-const ISSUE_TYPE_LIST_ROWS = [
-  { id: 'Onboarding assistance', title: 'Onboarding assistance' },
-  { id: 'Login Issue', title: 'Login Issue' },
-  { id: 'Forgot username/password', title: 'Forgot username/pwd' },
-  { id: 'Membership & documents', title: 'Membership & documents' },
-  { id: 'Wellness tracker', title: 'Wellness tracker' },
-  { id: 'Feature malfunction', title: 'Feature malfunction' },
-  { id: 'Not App Related', title: 'Not App Related' },
-  { id: 'Unspecified / No Response', title: 'Unspecified / Other' }
-];
-
-async function sendIssueTypeList(phoneNumber) {
-  if (!accessToken || !phoneNumberId) return;
-  try {
-    await fetch(
-      `https://graph.facebook.com/${graphVersion}/${phoneNumberId}/messages`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          messaging_product: 'whatsapp',
-          recipient_type: 'individual',
-          to: phoneNumber,
-          type: 'interactive',
-          interactive: {
-            type: 'list',
-            body: { text: 'Thank you for contacting the POLMED Connect Helpdesk. Please select the type of issue you are experiencing on the POLMED Connect app, and one of our agents will get back to you as soon as possible.' },
-            action: { button: 'Select issue type', sections: [{ title: 'Issue Type', rows: ISSUE_TYPE_LIST_ROWS }] }
-          }
-        })
-      }
-    );
-  } catch (err) {
-    console.error('Could not send issue type list:', err.message);
-  }
-}
-
 async function sendTicketConfirmation(phoneNumber, ticketId) {
   if (!accessToken || !phoneNumberId) return;
   try {
@@ -530,14 +485,11 @@ exports.handler = async function (event) {
     }
 
     await db.collection('tickets').add(ticket);
-    // Only fires on a genuinely new conversation (not on messages threaded
-    // onto an already-open ticket), so a member texting repeatedly at
-    // 2am doesn't get spammed with the after-hours notice every time.
+    // No automatic issue-type selection prompt is sent. Agents can triage on
+    // the dashboard, while only the after-hours notice remains for offline hours.
     if (selectedIssueType) {
       await sendTicketConfirmation(sender, ticketId);
-    } else if (isWithinBusinessHours(now)) {
-      await sendIssueTypeList(sender);
-    } else {
+    } else if (!isWithinBusinessHours(now)) {
       await sendAfterHoursMessage(sender);
     }
     console.log('New ticket created:', ticketId, 'from sender:', sender.slice(-4), mediaType ? `(media: ${mediaType})` : '');

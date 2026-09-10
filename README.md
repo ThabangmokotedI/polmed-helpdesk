@@ -51,6 +51,7 @@ polmed-helpdesk/
 - `WHATSAPP_VERIFY_TOKEN` — webhook verification token for Meta
 - `META_APP_SECRET` — Meta app secret used to verify incoming WhatsApp payloads
 - `WHATSAPP_ACCESS_TOKEN` — token used to download WhatsApp media attachments
+- `WHATSAPP_PROACTIVE_TEMPLATE_NAME` — the exact approved Meta WhatsApp template name used by Contact a member
 - `MAILGUN_SIGNING_KEY` — Mailgun inbound signature key (optional in dev)
 
 ### Important credential guidance

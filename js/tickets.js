@@ -302,6 +302,7 @@ function timestampMs(value) {
 }
 
 function displayStatus(ticket) {
+  if (ticket.issueType === 'Stale' || ticket.status === 'Stale') return 'Stale';
   if (ticket.status !== 'New') return ticket.status || '';
   const conversation = Array.isArray(ticket.conversation) ? ticket.conversation : [];
   const lastMemberAt = Math.max(
@@ -526,7 +527,10 @@ async function sendContactMember() {
       body: JSON.stringify({ phoneNumber, memberName, note })
     });
     const data = await res.json();
-    if (!res.ok || !data.ok) throw new Error(data.error?.error?.message || data.error || 'Could not start conversation.');
+    if (!res.ok || !data.ok) {
+      const errorMessage = data.error?.error?.message || data.error?.message || data.error || 'Could not start conversation.';
+      throw new Error(typeof errorMessage === 'string' ? errorMessage : 'Could not start conversation.');
+    }
     resultEl.textContent = `Message sent and ticket ${data.ticketId} created.`;
     resultEl.className = 'contact-member-result success';
     document.getElementById('contact-phone').value = '';
