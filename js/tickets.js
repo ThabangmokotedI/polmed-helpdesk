@@ -951,7 +951,11 @@ function showSensitivePasswordModal(ticketId) {
 
   const input = document.createElement('input');
   input.type = 'password';
-  input.autocomplete = 'current-password';
+  input.autocomplete = 'off';
+  input.autocorrect = 'off';
+  input.autocapitalize = 'off';
+  input.spellcheck = false;
+  input.name = 'manual-password-' + Date.now();
   input.placeholder = 'Password';
   input.style.width = '100%';
   input.style.boxSizing = 'border-box';
