@@ -6,7 +6,7 @@ const appMod  = await import('https://www.gstatic.com/firebasejs/10.12.0/firebas
 const authMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
 const fsMod   = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
 
-const { initializeApp, getAuth, onAuthStateChanged, signOut: fbSignOut } = { ...appMod, ...authMod };
+const { initializeApp, getAuth, onAuthStateChanged, signOut: fbSignOut, EmailAuthProvider, reauthenticateWithCredential } = { ...appMod, ...authMod };
 const { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc,
   onSnapshot, getDocs, query, orderBy, startAfter, limit, serverTimestamp,
   Timestamp, getDoc, setDoc, arrayUnion } = fsMod;
@@ -63,6 +63,7 @@ let reportTickets = null;
 let loadingReportTickets = false;
 let editingId   = null;
 let formDirty   = false;
+let sensitiveDetailUnlockTicketId = null;
 const TICKET_PAGE_SIZE = 100;
 
 // ── Global function exports ───────────────────────────────────────────────────
@@ -77,6 +78,24 @@ window.saveTicket       = saveTicket;
 window.archiveTicket    = archiveTicket;
 window.deleteTicket     = deleteTicket;
 window.viewTicket       = viewTicket;
+
+window.addEventListener('click', (event) => {
+  const toggleButton = event.target.closest('[data-sensitive-reveal]');
+  if (!toggleButton) return;
+  event.stopPropagation();
+
+  const ticketId = toggleButton.dataset.ticketId;
+  const action = toggleButton.dataset.action;
+  if (!ticketId) return;
+
+  if (action === 'hide') {
+    sensitiveDetailUnlockTicketId = null;
+    viewTicket(ticketId);
+    return;
+  }
+
+  unlockSensitiveDetails(ticketId);
+});
 window.closeDetail      = closeDetail;
 window.editFromDetail   = editFromDetail;
 window.signOut          = signOut;
@@ -445,9 +464,9 @@ function renderTable(list) {
         const anonTag = t.anonymized ? ` <span class="badge anon" title="Personal data removed after 12 months, per POPIA retention rules">Anonymized</span>` : '';
     return `<div class="table-row" onclick="viewTicket('${t.id}')">
       <div class="td"><span class="tid-pill">${unreadDot}${escapeHtml(t.ticketId) || '—'}</span>${anonTag}</div>
-      <div class="td mono">${escapeHtml(t.identifier) || '—'}</div>
+      <div class="td mono">${maskSensitiveValue(t.identifier)}</div>
       <div class="td issue">${escapeHtml(t.issueType) || '—'}</div>
-      <div class="td desc">${escapeHtml(t.description) || '—'}</div>
+      <div class="td desc">${maskSensitiveText(t.description || t.message) || '—'}</div>
       <div class="td">${ch} ${escapeHtml(t.contactMethod) || '—'}</div>
       <div class="td date">${escapeHtml(date)}</div>
       <div class="td date">${escapeHtml(t.timeReceived) || '—'}</div>
@@ -840,6 +859,90 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
+function maskSensitiveValue(value) {
+  if (!value) return '—';
+  const trimmed = String(value).trim();
+  if (trimmed.length <= 2) return '••';
+  return `${'•'.repeat(Math.max(trimmed.length - 2, 4))}${trimmed.slice(-2)}`;
+}
+
+function maskSensitiveText(value) {
+  if (value === null || value === undefined || value === '') return '—';
+  let text = String(value);
+  text = text.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[hidden email]');
+  text = text.replace(/(?:\+?\d[\d\s().-]{8,}\d)/g, '[hidden number]');
+  text = text.replace(/\b\d{8,}\b/g, '[hidden ID]');
+  return text;
+}
+
+function containsSensitiveMemberData(value) {
+  if (!value) return false;
+  const text = String(value);
+  return /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(text)
+    || /(?:\+?\d[\d\s().-]{8,}\d)/.test(text)
+    || /\b\d{8,}\b/.test(text);
+}
+
+function renderSensitiveText(value, ticketId, isMemberMessage = false) {
+  if (!isMemberMessage || !containsSensitiveMemberData(value)) {
+    return escapeHtml(value || '');
+  }
+
+  const isUnlocked = sensitiveDetailUnlockTicketId === ticketId && !!value;
+  const safeValue = isUnlocked ? escapeHtml(value) : maskSensitiveText(value);
+  const actionLabel = isUnlocked ? 'Hide' : 'View';
+  const action = isUnlocked ? 'hide' : 'show';
+
+  return `
+    <span style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;max-width:100%;">
+      <span style="white-space:pre-wrap;word-break:break-word;">${safeValue}</span>
+      <button
+        type="button"
+        data-sensitive-reveal="true"
+        data-ticket-id="${ticketId}"
+        data-action="${action}"
+        title="${isUnlocked ? 'Hide sensitive details' : 'Reveal sensitive details'}"
+        style="padding:5px 10px;min-width:auto;display:inline-flex;align-items:center;justify-content:center;line-height:1;border:1px solid #7dd3fc;background:#e0f2fe;color:#0f172a;border-radius:8px;font-weight:600;box-shadow:0 1px 3px rgba(15,23,42,0.08);cursor:pointer;"
+      >${actionLabel}</button>
+    </span>
+  `;
+}
+
+async function unlockSensitiveDetails(ticketId) {
+  if (!currentUser || !currentUser.email) return;
+  const password = window.prompt('Enter your password to view member ID, membership number and email address.');
+  if (!password) return;
+  try {
+    const credential = EmailAuthProvider.credential(currentUser.email, password);
+    await reauthenticateWithCredential(currentUser, credential);
+    sensitiveDetailUnlockTicketId = ticketId;
+    viewTicket(ticketId);
+  } catch {
+    alert('Incorrect password. Member details remain hidden.');
+  }
+}
+
+function renderSensitiveField(value, label, ticketId) {
+  const isUnlocked = sensitiveDetailUnlockTicketId === ticketId && !!value;
+  const display = isUnlocked ? escapeHtml(value) : maskSensitiveValue(value);
+  const buttonSvg = isUnlocked
+    ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
+    : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+  return `
+    <div style="display:flex;align-items:center;gap:8px;justify-content:space-between;width:100%;min-width:0">
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block">${display}</span>
+      <button
+        type="button"
+        data-sensitive-reveal="true"
+        data-ticket-id="${ticketId}"
+        data-action="${isUnlocked ? 'hide' : 'show'}"
+        title="${isUnlocked ? 'Hide details' : 'Reveal details'}"
+        style="padding:5px 8px;min-width:auto;display:inline-flex;align-items:center;justify-content:center;line-height:1;border:1px solid #7dd3fc;background:#e0f2fe;color:#0f172a;border-radius:8px;font-weight:600;cursor:pointer;"
+      >${buttonSvg}</button>
+    </div>
+  `;
+}
+
 // ── Ticket detail view ────────────────────────────────────────────────────────
 function viewTicket(id) {
   const t = tickets.find(x => x.id === id);
@@ -858,7 +961,6 @@ function viewTicket(id) {
                     : t.source === 'email-webhook'     ? `${lucideIcon('bot')} Auto (Email)`
                     : `${lucideIcon('pencil')} Manual`;
   const canReplyByWhatsApp = t.contactMethod === 'WhatsApp' && !!t.phoneNumber;
-  const suggestedReply = `Thank you for contacting the POLMED Connect Helpdesk. Your ticket reference is ${t.ticketId}. We will follow up with you shortly.`;
   const possibleDuplicate = t.possibleDuplicateOf && !t.possibleDuplicateReviewed
     ? tickets.find(x => x.ticketId === t.possibleDuplicateOf)
     : null;
@@ -915,7 +1017,7 @@ function viewTicket(id) {
     ${mergedNote}
     <div class="detail-grid">
       <div class="detail-item"><label>Contact Method</label><span>${escapeHtml(t.contactMethod) || '—'}</span></div>
-      <div class="detail-item"><label>Member Identifier</label><span>${escapeHtml(t.identifier) || '—'}</span></div>
+      <div class="detail-item"><label>Member Identifier</label>${renderSensitiveField(t.identifier, 'Member Identifier', t.id)}</div>
       <div class="detail-item"><label>Issue Type</label><span>${escapeHtml(t.issueType) || '—'}</span></div>
       <div class="detail-item"><label>Status</label><span>${statusBadge(displayStatus(t))}</span></div>
       <div class="detail-item"><label>Date Received</label><span>${escapeHtml(t.dateReceived) || '—'}</span></div>
@@ -929,7 +1031,7 @@ function viewTicket(id) {
     </div>
     <div class="detail-section">
       <div class="detail-section-label">Original message</div>
-      <div class="detail-block">${escapeHtml(t.message) || '—'}</div>
+      <div class="detail-block">${containsSensitiveMemberData(t.message) ? renderSensitiveText(t.message, t.id, true) : escapeHtml(t.message) || '—'}</div>
     </div>
     ${t.mediaPath ? `
     <div class="detail-section">
@@ -943,9 +1045,9 @@ function viewTicket(id) {
     </div>` : ''}
     <div class="detail-section">
       <div class="detail-section-label">Summary</div>
-      <div class="detail-block">${escapeHtml(t.description) || '—'}</div>
+      <div class="detail-block">${containsSensitiveMemberData(t.description) ? renderSensitiveText(t.description, t.id, true) : escapeHtml(t.description) || '—'}</div>
     </div>
-    ${t.resolutionDescription ? `<div class="detail-section"><div class="detail-section-label">Resolution Notes</div><div class="detail-block">${escapeHtml(t.resolutionDescription)}</div></div>` : ''}
+    ${t.resolutionDescription ? `<div class="detail-section"><div class="detail-section-label">Resolution Notes</div><div class="detail-block">${containsSensitiveMemberData(t.resolutionDescription) ? renderSensitiveText(t.resolutionDescription, t.id, true) : escapeHtml(t.resolutionDescription)}</div></div>` : ''}
     ${canReplyByWhatsApp ? `
     <div class="detail-section">
       <div class="detail-section-label">Reply to member (WhatsApp)</div>
@@ -964,7 +1066,8 @@ function viewTicket(id) {
       </div>
       <textarea id="detail-reply-text" rows="3"
         style="width:100%;box-sizing:border-box;padding:8px;border-radius:8px;border:1px solid #ddd;font:inherit;resize:vertical"
-      >${escapeHtml(suggestedReply)}</textarea>
+        placeholder="Type your reply here..."
+      ></textarea>
     </div>` : ''}
   `;
   document.getElementById('copy-reply-btn').style.display = t.ticketId ? 'inline-flex' : 'none';
@@ -1360,7 +1463,7 @@ function renderConversation(id) {
         <div class="convo-bubble ${isAgent ? 'convo-agent' : 'convo-member'}">
           <div class="convo-meta">${isAgent ? 'You (agent)' : 'Member'} · ${escapeHtml(when)}</div>
           ${quotedHtml}
-          <div class="convo-text">${escapeHtml(entry.text)}</div>
+          <div class="convo-text">${isAgent ? escapeHtml(entry.text) : renderSensitiveText(entry.text, t.id, true)}</div>
           ${mediaHtml}
         </div>
         ${actionBar}
@@ -1483,10 +1586,7 @@ window.sendWhatsAppReply = async function () {
   if (!t || !t.phoneNumber) return;
   const textarea = document.getElementById('detail-reply-text');
   const typedMessage = (textarea?.value || '').trim();
-  const hasAgentReply = Array.isArray(t.conversation) && t.conversation.some(entry => entry.from === 'agent');
-  const message = hasAgentReply
-    ? typedMessage
-    : `Good day, Valued Member. You are speaking to ${agentDisplayName(currentUser?.email)}. Please let me know how I can help.`;
+  const message = typedMessage;
   if (!message) { alert('Reply text is empty.'); return; }
 
   const btn = document.getElementById('send-reply-btn');
