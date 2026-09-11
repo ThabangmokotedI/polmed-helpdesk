@@ -914,18 +914,123 @@ function renderSensitiveText(value, ticketId, isMemberMessage = false) {
   `;
 }
 
+function showSensitivePasswordModal(ticketId) {
+  const existing = document.getElementById('sensitive-password-modal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'sensitive-password-modal';
+  modal.style.position = 'fixed';
+  modal.style.inset = '0';
+  modal.style.background = 'rgba(10, 38, 40, 0.56)';
+  modal.style.display = 'flex';
+  modal.style.alignItems = 'center';
+  modal.style.justifyContent = 'center';
+  modal.style.zIndex = '99999';
+
+  const card = document.createElement('div');
+  card.style.width = 'min(420px, calc(100vw - 24px))';
+  card.style.background = '#F3F8F8';
+  card.style.borderRadius = '16px';
+  card.style.boxShadow = '0 18px 40px rgba(15, 23, 42, 0.18)';
+  card.style.padding = '20px 20px 16px';
+  card.style.border = '1px solid #D7E6E5';
+
+  const title = document.createElement('div');
+  title.textContent = 'Enter your password';
+  title.style.fontSize = '15px';
+  title.style.fontWeight = '700';
+  title.style.color = '#1E3A3A';
+  title.style.marginBottom = '12px';
+
+  const description = document.createElement('div');
+  description.textContent = 'To view member ID, membership number and email address.';
+  description.style.fontSize = '13px';
+  description.style.color = '#48656B';
+  description.style.marginBottom = '12px';
+
+  const input = document.createElement('input');
+  input.type = 'password';
+  input.autocomplete = 'current-password';
+  input.placeholder = 'Password';
+  input.style.width = '100%';
+  input.style.boxSizing = 'border-box';
+  input.style.padding = '10px 12px';
+  input.style.borderRadius = '10px';
+  input.style.border = '1px solid #B7CFCB';
+  input.style.background = '#FFFFFF';
+  input.style.color = '#1A2A2A';
+  input.style.fontSize = '14px';
+  input.style.marginBottom = '14px';
+
+  const actions = document.createElement('div');
+  actions.style.display = 'flex';
+  actions.style.justifyContent = 'flex-end';
+  actions.style.gap = '10px';
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.style.padding = '8px 14px';
+  cancelBtn.style.borderRadius = '10px';
+  cancelBtn.style.border = '1px solid #B7CFCB';
+  cancelBtn.style.background = '#F8FBFB';
+  cancelBtn.style.color = '#1E3A3A';
+  cancelBtn.style.cursor = 'pointer';
+  cancelBtn.style.fontWeight = '600';
+  cancelBtn.addEventListener('click', () => modal.remove());
+
+  const okBtn = document.createElement('button');
+  okBtn.type = 'button';
+  okBtn.textContent = 'OK';
+  okBtn.style.padding = '8px 16px';
+  okBtn.style.borderRadius = '10px';
+  okBtn.style.border = '1px solid #0F7C8A';
+  okBtn.style.background = '#0F7C8A';
+  okBtn.style.color = '#FFFFFF';
+  okBtn.style.fontWeight = '700';
+  okBtn.style.cursor = 'pointer';
+  okBtn.addEventListener('click', async () => {
+    const password = input.value;
+    if (!password) return;
+
+    try {
+      const credential = EmailAuthProvider.credential(currentUser.email, password);
+      await reauthenticateWithCredential(currentUser, credential);
+      sensitiveDetailUnlockTicketId = ticketId;
+      modal.remove();
+      viewTicket(ticketId);
+    } catch {
+      alert('Incorrect password. Member details remain hidden.');
+      input.value = '';
+      input.focus();
+    }
+  });
+
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      okBtn.click();
+    }
+    if (event.key === 'Escape') {
+      modal.remove();
+    }
+  });
+
+  actions.appendChild(cancelBtn);
+  actions.appendChild(okBtn);
+  card.appendChild(title);
+  card.appendChild(description);
+  card.appendChild(input);
+  card.appendChild(actions);
+  modal.appendChild(card);
+  document.body.appendChild(modal);
+  input.focus();
+}
+
 async function unlockSensitiveDetails(ticketId) {
   if (!currentUser || !currentUser.email) return;
-  const password = window.prompt('Enter your password to view member ID, membership number and email address.');
-  if (!password) return;
-  try {
-    const credential = EmailAuthProvider.credential(currentUser.email, password);
-    await reauthenticateWithCredential(currentUser, credential);
-    sensitiveDetailUnlockTicketId = ticketId;
-    viewTicket(ticketId);
-  } catch {
-    alert('Incorrect password. Member details remain hidden.');
-  }
+  showSensitivePasswordModal(ticketId);
 }
 
 function renderSensitiveField(value, label, ticketId) {
