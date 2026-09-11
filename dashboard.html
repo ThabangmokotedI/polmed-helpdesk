@@ -363,9 +363,9 @@
             </h2>
             <div class="steps">
               <div class="step"><div class="step-n">1</div><div class="step-text">A member messages the WhatsApp helpdesk number with an app issue.</div></div>
-              <div class="step"><div class="step-n">2</div><div class="step-text">During business hours (Mon–Fri, 08:00–17:00 SA time, excluding SA public holidays), a ticket is created with status <strong>New</strong> and the member gets an interactive issue-type list. Outside business hours, the ticket is still created, but the member gets an after-hours message asking for details instead of the issue-type list so an agent can follow up.</div></div>
-              <div class="step"><div class="step-n">3</div><div class="step-text">When the member selects an issue type, it is saved on the ticket automatically and the ticket number is sent immediately. The original selection is also recorded in the conversation.</div></div>
-              <div class="step"><div class="step-n">4</div><div class="step-text">The ticket appears in the dashboard and live updates continue without a page refresh. Use <strong>Load older tickets</strong> when older records are available. Review the conversation and complete any missing Issue Type, Summary, or Status fields.</div></div>
+              <div class="step"><div class="step-n">2</div><div class="step-text">A ticket is created with status <strong>New</strong> as soon as the member messages. Outside business hours, the member receives an after-hours message instead of a live follow-up, but the ticket is still created and appears in the dashboard.</div></div>
+              <div class="step"><div class="step-n">3</div><div class="step-text">The ticket appears in the dashboard with live updates and no page refresh needed. Review the conversation and complete any missing Issue Type, Summary, or Status fields before closing the ticket.</div></div>
+              <div class="step"><div class="step-n">4</div><div class="step-text">Use <strong>Load older tickets</strong> when older records are available. The agent greeting, quick replies, quoting, reactions, and attachments remain the active tools for follow-up.</div></div>
               <div class="step"><div class="step-n">5</div><div class="step-text">For the first reply, the dashboard sends the approved agent greeting with the agent's name. For later replies, use <strong>Send via WhatsApp</strong> and choose an approved quick reply or enter your own message. You can also attach a file (<svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Attach"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>), quote a specific member message before replying (<svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Reply"><path d="m9 17-5-5 5-5M4 12h10a6 6 0 0 1 6 6v1"/></svg>), or react to one of their messages with an approved emoji.</div></div>
               <div class="step"><div class="step-n">6</div><div class="step-text">While you're typing a reply, other agents viewing the same ticket see an "already replying" notice, so two agents don't cross-reply to the same member.</div></div>
               <div class="step"><div class="step-n">7</div><div class="step-text">If a ticket remains <strong>New</strong> for at least 5 days after an agent has replied and there is no newer member message, it displays as <strong>Stale</strong>. This is computed for display and reporting; the stored ticket status is not overwritten. When resolved, update the ticket status to <strong>Resolved</strong>, fill in the resolution notes, and save.</div></div>
@@ -412,12 +412,12 @@
             <h2>Status colour reference</h2>
             <div class="label-map">
               <div class="label-row"><span class="badge new">New</span></div>
-              <div class="label-row"><span class="badge stale">Stale</span><span>No member reply for at least 5 days after an agent response</span></div>
               <div class="label-row"><span class="badge prog">In Progress</span></div>
               <div class="label-row"><span class="badge res">Resolved</span></div>
               <div class="label-row"><span class="badge redir">Redirected</span></div>
               <div class="label-row"><span class="badge unres">Unresolved</span></div>
               <div class="label-row"><span class="badge merged">Merged</span><span>Duplicate conversation folded into another ticket</span></div>
+              <div class="label-row"><span class="badge stale">Stale</span><span>Display-only stale state for inactive follow-ups</span></div>
             </div>
           </div>
         </div>
