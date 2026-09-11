@@ -79,13 +79,11 @@ window.archiveTicket    = archiveTicket;
 window.deleteTicket     = deleteTicket;
 window.viewTicket       = viewTicket;
 
-window.addEventListener('click', (event) => {
-  const toggleButton = event.target.closest('[data-sensitive-reveal]');
-  if (!toggleButton) return;
-  event.stopPropagation();
+window.handleSensitiveReveal = function (button) {
+  if (!button) return;
 
-  const ticketId = toggleButton.dataset.ticketId;
-  const action = toggleButton.dataset.action;
+  const ticketId = button.dataset.ticketId;
+  const action = button.dataset.action;
   if (!ticketId) return;
 
   if (action === 'hide') {
@@ -95,6 +93,13 @@ window.addEventListener('click', (event) => {
   }
 
   unlockSensitiveDetails(ticketId);
+};
+
+window.addEventListener('click', (event) => {
+  const toggleButton = event.target.closest('[data-sensitive-reveal]');
+  if (!toggleButton) return;
+  event.stopPropagation();
+  window.handleSensitiveReveal(toggleButton);
 });
 window.closeDetail      = closeDetail;
 window.editFromDetail   = editFromDetail;
@@ -901,6 +906,7 @@ function renderSensitiveText(value, ticketId, isMemberMessage = false) {
         data-sensitive-reveal="true"
         data-ticket-id="${ticketId}"
         data-action="${action}"
+        onclick="window.handleSensitiveReveal(this); return false;"
         title="${isUnlocked ? 'Hide sensitive details' : 'Reveal sensitive details'}"
         style="padding:5px 10px;min-width:auto;display:inline-flex;align-items:center;justify-content:center;line-height:1;border:1px solid #7dd3fc;background:#e0f2fe;color:#0f172a;border-radius:8px;font-weight:600;box-shadow:0 1px 3px rgba(15,23,42,0.08);cursor:pointer;"
       >${actionLabel}</button>
@@ -936,6 +942,7 @@ function renderSensitiveField(value, label, ticketId) {
         data-sensitive-reveal="true"
         data-ticket-id="${ticketId}"
         data-action="${isUnlocked ? 'hide' : 'show'}"
+        onclick="window.handleSensitiveReveal(this); return false;"
         title="${isUnlocked ? 'Hide details' : 'Reveal details'}"
         style="padding:5px 8px;min-width:auto;display:inline-flex;align-items:center;justify-content:center;line-height:1;border:1px solid #7dd3fc;background:#e0f2fe;color:#0f172a;border-radius:8px;font-weight:600;cursor:pointer;"
       >${buttonSvg}</button>
