@@ -265,6 +265,41 @@ async function sendAfterHoursMessage(phoneNumber) {
   }
 }
 
+// Sent automatically on every brand-new ticket where the member hasn't
+// already picked an issue type from an interactive list (that case gets
+// sendTicketConfirmation with a ticket reference instead). Previously this
+// text only existed as a quick-reply template an agent had to manually
+// pick and send -- during business hours, a plain first message like "Hi"
+// got no automatic reply at all.
+async function sendWelcomeMessage(phoneNumber) {
+  if (!accessToken || !phoneNumberId) return;
+  const text = "Thank you for contacting the POLMED Connect Helpdesk.\n\n" +
+    "Please note that this channel is strictly for queries and support related to the POLMED Connect Mobile App.\n" +
+    "If your enquiry relates to medical aid benefits, claims, authorisations, or any other general matter, kindly WhatsApp 0600702547 or call 0860765633 for assistance.\n\n" +
+    "If you have a query regarding the app, please describe the issue and one of our agents will get back to you as soon as possible.";
+  try {
+    await fetch(
+      `https://graph.facebook.com/${graphVersion}/${phoneNumberId}/messages`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: phoneNumber,
+          type: 'text',
+          text: { body: text }
+        })
+      }
+    );
+  } catch (err) {
+    console.error('Could not send welcome message:', err.message);
+  }
+}
+
 // ── Media handling ────────────────────────────────────────────────────────────
 const MEDIA_TYPES = ['image', 'video', 'audio', 'document', 'sticker'];
 
@@ -535,11 +570,20 @@ exports.handler = async function (event) {
     // Firestore (outbound WhatsApp sends, logging), which is exactly why
     // they're not inside the transaction body.
     // No automatic issue-type selection prompt is sent. Agents can triage on
-    // the dashboard, while only the after-hours notice remains for offline hours.
+    // the dashboard. Every other brand-new ticket gets the welcome/scope
+    // message automatically now (it used to only go out if an agent
+    // manually picked it from the quick-reply dropdown, so a plain first
+    // message during business hours got no reply at all) -- the
+    // after-hours notice still goes out in addition when it's actually
+    // after hours, since it carries real information the welcome message
+    // doesn't (office hours, what to send us to speed things up).
     if (selectedIssueType) {
       await sendTicketConfirmation(sender, ticketId);
-    } else if (!isWithinBusinessHours(now)) {
-      await sendAfterHoursMessage(sender);
+    } else {
+      await sendWelcomeMessage(sender);
+      if (!isWithinBusinessHours(now)) {
+        await sendAfterHoursMessage(sender);
+      }
     }
     console.log('New ticket created:', ticketId, 'from sender:', sender.slice(-4), mediaType ? `(media: ${mediaType})` : '');
     await recordHealth('ok');

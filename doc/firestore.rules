@@ -20,7 +20,8 @@ service cloud.firestore {
         'mergedFromStatus', 'mergedIntoTicketId', 'mergedIntoTicketDocId',
         'mergeId', 'mergedAt', 'archived', 'archivedBy', 'archivedAt',
         'mergedIntoPreviousResolutionTime', 'mergedIntoPreviousRtInHours',
-        'mergedIntoPreviousResolutionDescription'
+        'mergedIntoPreviousResolutionDescription',
+        'mergedIntoPreviousHasNewReply', 'mergedFromHasNewReply'
       ];
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(allowedFields);
     }

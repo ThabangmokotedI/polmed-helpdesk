@@ -1241,7 +1241,6 @@ function viewTicket(id) {
       ></textarea>
     </div>` : ''}
   `;
-  document.getElementById('copy-reply-btn').style.display = t.ticketId ? 'inline-flex' : 'none';
   document.getElementById('send-reply-btn').style.display = canReplyByWhatsApp ? 'inline-flex' : 'none';
   const markReadBtn = document.getElementById('mark-read-btn');
   if (markReadBtn) markReadBtn.style.display = t.hasNewReply ? 'inline-flex' : 'none';
@@ -1330,6 +1329,10 @@ window.mergeDuplicateTicket = async function (duplicateDocId) {
       resolutionTime: '',
       rtInHours: null,
       resolutionDescription: '',
+      // The merged-in content just landed on the original, same as any
+      // other new message arriving -- worth a look, same as an append.
+      mergedIntoPreviousHasNewReply: original.hasNewReply ?? false,
+      hasNewReply: true,
       updatedAt: serverTimestamp(),
       updatedBy: currentUser.email
     });
@@ -1345,6 +1348,12 @@ window.mergeDuplicateTicket = async function (duplicateDocId) {
       mergedAt,
       possibleDuplicateReviewed: true,
       possibleDuplicateDecision: 'merged',
+      // Its own detail view is now unreachable (opening it redirects
+      // straight to the original), so a stale unread flag here could never
+      // be cleared through the UI -- the content itself is now flagged
+      // unread on the original instead, right above.
+      mergedFromHasNewReply: duplicate.hasNewReply ?? false,
+      hasNewReply: false,
       updatedAt: serverTimestamp(),
       updatedBy: currentUser.email
     });
@@ -1371,6 +1380,8 @@ window.undoMerge = async function (duplicateDocId, mergeId) {
       mergedIntoPreviousResolutionTime: null,
       mergedIntoPreviousRtInHours: null,
       mergedIntoPreviousResolutionDescription: null,
+      hasNewReply: duplicate.mergedIntoPreviousHasNewReply ?? false,
+      mergedIntoPreviousHasNewReply: null,
       updatedAt: serverTimestamp(),
       updatedBy: currentUser.email
     });
@@ -1385,6 +1396,8 @@ window.undoMerge = async function (duplicateDocId, mergeId) {
       mergedAt: null,
       possibleDuplicateReviewed: true,
       possibleDuplicateDecision: 'merged-undone',
+      hasNewReply: duplicate.mergedFromHasNewReply ?? false,
+      mergedFromHasNewReply: null,
       updatedAt: serverTimestamp(),
       updatedBy: currentUser.email
     });
@@ -1762,15 +1775,6 @@ function closeDetail() {
   document.getElementById('detail-overlay').classList.remove('open');
 }
 function editFromDetail() { closeDetail(); editTicketById(editingId); }
-
-window.copyReply = function () {
-  const t = tickets.find(x => x.id === editingId);
-  if (!t || !t.ticketId) return;
-  const reply = `Thank you for contacting the POLMED Connect Helpdesk. Your ticket reference is ${t.ticketId}. We will follow up with you shortly.`;
-  navigator.clipboard.writeText(reply)
-    .then(() => alert('Reference reply copied to clipboard.'))
-    .catch(() => alert('Copy failed. Please try again.'));
-};
 
 // SECURITY FIX (priority #1): the WhatsApp reply function now requires a
 // Firebase ID token proving the caller is a logged-in Polmed agent. Without
