@@ -2,8 +2,13 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --teal: #1A7DA0;
-  --teal-dark: #125E78;
+  /* Kept in sync with css/app.css's :root, which loads right after this
+     file and wins any conflict (both define the same custom property
+     names at equal specificity) — these values were stale leftovers from
+     before the brand-teal pass and had zero effect on the rendered page,
+     but were misleading to anyone editing this file expecting them to. */
+  --teal: #006A94;
+  --teal-dark: #004F70;
   --teal-light: #E3F4FA;
   --navy: #00354A;
   --text: #1A2926;
