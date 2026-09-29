@@ -18,7 +18,9 @@ service cloud.firestore {
         'possibleDuplicateReviewed', 'possibleDuplicateDecision',
         'conversation', 'mergedConversation', 'mergedIntoPreviousStatus',
         'mergedFromStatus', 'mergedIntoTicketId', 'mergedIntoTicketDocId',
-        'mergeId', 'mergedAt', 'archived', 'archivedBy', 'archivedAt'
+        'mergeId', 'mergedAt', 'archived', 'archivedBy', 'archivedAt',
+        'mergedIntoPreviousResolutionTime', 'mergedIntoPreviousRtInHours',
+        'mergedIntoPreviousResolutionDescription'
       ];
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(allowedFields);
     }

@@ -1148,11 +1148,23 @@ function viewTicket(id) {
       .sort((a, b) => ticketActivityTime(b) - ticketActivityTime(a));
     if (priorTickets.length > 0) {
       const priorWithId = priorTickets.find(x => x.identifier);
+      // A count alone ("1 previous ticket") gave no way to actually find
+      // that ticket short of searching by hand — link straight to it.
+      const MAX_SHOWN = 5;
+      const priorLinks = priorTickets.slice(0, MAX_SHOWN)
+        .map(x => `<button type="button" class="btn btn-sm" onclick="viewTicket('${x.id}')">${escapeHtml(x.ticketId || x.id)}</button>`)
+        .join('');
+      const moreCount = priorTickets.length - MAX_SHOWN;
       returningMemberNote = `
         <div class="detail-section" style="margin-bottom:10px">
-          <div style="display:inline-flex;align-items:center;gap:6px;background:#EEF2FF;color:#4338CA;border:1px solid #C7D2FE;border-radius:8px;padding:6px 12px;font-size:12.5px;font-weight:500">
-            ${lucideIcon('refresh')} Returning member — ${priorTickets.length} previous ticket${priorTickets.length === 1 ? '' : 's'}
-            ${priorWithId ? ` · usually identifies as <strong>${escapeHtml(priorWithId.identifier)}</strong>` : ''}
+          <div style="background:#EEF2FF;color:#4338CA;border:1px solid #C7D2FE;border-radius:8px;padding:8px 12px;font-size:12.5px;font-weight:500">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+              ${lucideIcon('refresh')} Returning member — ${priorTickets.length} previous ticket${priorTickets.length === 1 ? '' : 's'}
+              ${priorWithId ? ` · usually identifies as <strong>${escapeHtml(priorWithId.identifier)}</strong>` : ''}
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+              ${priorLinks}${moreCount > 0 ? `<span>+${moreCount} more</span>` : ''}
+            </div>
           </div>
         </div>`;
     }
@@ -1277,6 +1289,17 @@ window.mergeDuplicateTicket = async function (duplicateDocId) {
     await updateDoc(doc(db, 'tickets', original.id), {
       conversation: [...(Array.isArray(original.conversation) ? original.conversation : []), marker, ...movedEntries],
       status: 'In Progress',
+      // A resolved ticket's old resolution time/description no longer
+      // describe it once a new, unresolved message is merged in -- kept
+      // here so undoMerge can put them back, cleared on the live ticket so
+      // it doesn't show "In Progress" next to a stale "resolved in 22
+      // minutes" from before it was reopened.
+      mergedIntoPreviousResolutionTime: original.resolutionTime ?? null,
+      mergedIntoPreviousRtInHours: original.rtInHours ?? null,
+      mergedIntoPreviousResolutionDescription: original.resolutionDescription ?? null,
+      resolutionTime: '',
+      rtInHours: null,
+      resolutionDescription: '',
       updatedAt: serverTimestamp(),
       updatedBy: currentUser.email
     });
@@ -1312,6 +1335,12 @@ window.undoMerge = async function (duplicateDocId, mergeId) {
     await updateDoc(doc(db, 'tickets', original.id), {
       conversation: restoredOriginalConversation,
       status: duplicate.mergedIntoPreviousStatus || 'Resolved',
+      resolutionTime: duplicate.mergedIntoPreviousResolutionTime || '',
+      rtInHours: duplicate.mergedIntoPreviousRtInHours ?? null,
+      resolutionDescription: duplicate.mergedIntoPreviousResolutionDescription || '',
+      mergedIntoPreviousResolutionTime: null,
+      mergedIntoPreviousRtInHours: null,
+      mergedIntoPreviousResolutionDescription: null,
       updatedAt: serverTimestamp(),
       updatedBy: currentUser.email
     });
