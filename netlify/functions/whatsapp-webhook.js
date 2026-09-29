@@ -405,121 +405,111 @@ exports.handler = async function (event) {
     const db = admin.firestore();
 
     // Continuation suggestion: doesn't auto-merge or auto-reopen anything.
-    // A still-open ticket (New/In Progress) is threaded onto exactly as
-    // before. If the sender's most recent ticket was closed (Resolved/
+    // A still-open ticket (New/In Progress/Stale) is threaded onto exactly
+    // as before. If the sender's most recent ticket was closed (Resolved/
     // Unresolved/Redirected) within the last 30 days, we tag the new
     // ticket about to be created with a pointer to it (possibleDuplicateOf,
     // read by the dashboard's duplicate-warning banner) so the agent can
     // confirm whether it's a continuation.
     const CONTINUATION_STATUSES  = ['Resolved', 'Unresolved', 'Redirected'];
     const CONTINUATION_WINDOW_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-    let possibleDuplicateOfId = null;
+    const ticketId = `TKT-${ds}-WA-${ts}-${idSuffix}`;
 
-    let recentSnap;
-    try {
-      recentSnap = await db.collection('tickets')
+    // The "does this phone number already have a ticket?" check and
+    // whatever it decides (append vs. create) run inside one transaction,
+    // so two messages arriving from the same brand-new number at nearly
+    // the same instant can't both see "no existing ticket" and both create
+    // one. Firestore re-runs this automatically if the read set changes
+    // before commit, so whichever message loses the race sees the other's
+    // new ticket on retry and correctly appends to it instead.
+    //
+    // Nothing here does anything outside Firestore (no outbound WhatsApp
+    // sends, no Storage writes) — a transaction body can be retried, so it
+    // must only contain idempotent reads/writes.
+    const outcome = await db.runTransaction(async (tx) => {
+      const recentQuery = db.collection('tickets')
         .where('phoneNumber', '==', sender)
         .orderBy('createdAt', 'desc')
-        .limit(1)
-        .get();
-    } catch (err) {
-      console.error('Could not check existing WhatsApp ticket; continuing with new ticket:', err.message);
-      recentSnap = { empty: true };
-    }
+        .limit(1);
+      const recentSnap = await tx.get(recentQuery);
 
-    if (!recentSnap.empty) {
-      let ticketDoc  = recentSnap.docs[0];
-      let ticketData = ticketDoc.data();
+      let ticketDoc = null, ticketData = null;
+      if (!recentSnap.empty) {
+        ticketDoc  = recentSnap.docs[0];
+        ticketData = ticketDoc.data();
 
-      const visitedTicketIds = new Set();
-      while (ticketData.status === 'Merged' && ticketData.mergedIntoTicketDocId && !visitedTicketIds.has(ticketDoc.id)) {
-        visitedTicketIds.add(ticketDoc.id);
-        const originalSnap = await db.collection('tickets').doc(ticketData.mergedIntoTicketDocId).get();
-        if (!originalSnap.exists) break;
-        ticketDoc = originalSnap;
-        ticketData = originalSnap.data();
+        const visitedTicketIds = new Set();
+        while (ticketData.status === 'Merged' && ticketData.mergedIntoTicketDocId && !visitedTicketIds.has(ticketDoc.id)) {
+          visitedTicketIds.add(ticketDoc.id);
+          const originalSnap = await tx.get(db.collection('tickets').doc(ticketData.mergedIntoTicketDocId));
+          if (!originalSnap.exists) break;
+          ticketDoc  = originalSnap;
+          ticketData = originalSnap.data();
+        }
+
+        if (OPEN_STATUSES.includes(ticketData.status)) {
+          const newEntry = { from: 'member', text, mediaPath, mediaType, waMessageId, at: now.toISOString() };
+          tx.update(ticketDoc.ref, {
+            conversation: admin.firestore.FieldValue.arrayUnion(newEntry),
+            ...(selectedIssueType ? { issueType: selectedIssueType } : {}),
+            // A reply means the member is no longer quiet, so a Stale
+            // ticket stops being accurately "Stale" the moment this lands.
+            ...(ticketData.status === 'Stale' ? { status: 'In Progress' } : {}),
+            lastMemberMessage: text,
+            lastMemberMessageAt: admin.firestore.FieldValue.serverTimestamp(),
+            hasNewReply: true,
+            updatedBy: 'WhatsApp webhook',
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+          return { type: 'appended', ticketId: ticketData.ticketId };
+        }
       }
 
-      if (OPEN_STATUSES.includes(ticketData.status)) {
-        const newEntry = {
-          from: 'member',
-          text,
-          mediaPath,
-          mediaType,
-          waMessageId,
-          at: now.toISOString()
-        };
-
-        await ticketDoc.ref.update({
-          conversation: admin.firestore.FieldValue.arrayUnion(newEntry),
-          ...(selectedIssueType ? { issueType: selectedIssueType } : {}),
-          // A reply means the member is no longer quiet, so a Stale ticket
-          // stops being accurately "Stale" the moment this lands.
-          ...(ticketData.status === 'Stale' ? { status: 'In Progress' } : {}),
-          lastMemberMessage: text,
-          lastMemberMessageAt: admin.firestore.FieldValue.serverTimestamp(),
-          hasNewReply: true,
-          updatedBy: 'WhatsApp webhook',
-          updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-
-        console.log('Appended to existing ticket:', ticketData.ticketId, 'from sender:', sender.slice(-4));
-        if (selectedIssueType) await sendTicketConfirmation(sender, ticketData.ticketId);
-        await recordHealth('ok');
-        return { statusCode: 200, body: JSON.stringify({ ok: true, ticketId: ticketData.ticketId, appended: true }) };
-      }
-
-      if (CONTINUATION_STATUSES.includes(ticketData.status)) {
+      let possibleDuplicateOfId = null;
+      if (ticketData && CONTINUATION_STATUSES.includes(ticketData.status)) {
         const closedAtMs = ticketData.updatedAt?.toMillis ? ticketData.updatedAt.toMillis() : 0;
         if (closedAtMs && (now.getTime() - closedAtMs) < CONTINUATION_WINDOW_MS) {
           possibleDuplicateOfId = ticketData.ticketId;
         }
       }
+
+      const newTicket = {
+        ticketId,
+        contactMethod: 'WhatsApp',
+        source:        'whatsapp-webhook',
+        status:        'New',
+        message:       text,
+        mediaPath,
+        mediaType,
+        phoneNumber:   sender,
+        identifier:    '',
+        description:   '',
+        issueType:     selectedIssueType || '',
+        conversation:  [{ from: 'member', text, mediaPath, mediaType, waMessageId, at: now.toISOString() }],
+        dateReceived:  received.date,
+        timeReceived:  received.time,
+        createdBy:     'WhatsApp webhook',
+        createdAt:     admin.firestore.FieldValue.serverTimestamp(),
+        updatedBy:     'WhatsApp webhook',
+        updatedAt:     admin.firestore.FieldValue.serverTimestamp()
+      };
+      if (possibleDuplicateOfId) newTicket.possibleDuplicateOf = possibleDuplicateOfId;
+
+      tx.set(db.collection('tickets').doc(), newTicket);
+      return { type: 'created', ticketId };
+    });
+
+    if (outcome.type === 'appended') {
+      console.log('Appended to existing ticket:', outcome.ticketId, 'from sender:', sender.slice(-4));
+      if (selectedIssueType) await sendTicketConfirmation(sender, outcome.ticketId);
+      await recordHealth('ok');
+      return { statusCode: 200, body: JSON.stringify({ ok: true, ticketId: outcome.ticketId, appended: true }) };
     }
 
-    const ticketId = `TKT-${ds}-WA-${ts}-${idSuffix}`;
-
-    let finalMediaPath = mediaPath;
-    if (mediaPath) {
-      try {
-        const bucket = admin.storage().bucket();
-        const ext = mediaPath.split('.').pop();
-        const oldFile = bucket.file(`whatsapp-media/${tempIdForMedia}.${ext}`);
-        const newFile = bucket.file(`whatsapp-media/${ticketId}.${ext}`);
-        await oldFile.move(newFile);
-        finalMediaPath = `whatsapp-media/${ticketId}.${ext}`;
-      } catch (err) {
-        console.error('Could not rename media file to final ticket ID:', err.message);
-        // fall back to the temp path — not fatal
-      }
-    }
-
-        const ticket = {
-      ticketId,
-      contactMethod: 'WhatsApp',
-      source:        'whatsapp-webhook',
-      status:        'New',
-      message:       text,
-      mediaPath:     finalMediaPath,
-      mediaType,
-      phoneNumber:   sender,
-      identifier: '',
-      description:   '',
-      issueType:     selectedIssueType || '',
-      conversation:  [{ from: 'member', text, mediaPath: finalMediaPath, mediaType, waMessageId, at: now.toISOString() }],
-      dateReceived:  received.date,
-      timeReceived:  received.time,
-      createdBy:     'WhatsApp webhook',
-      createdAt:     admin.firestore.FieldValue.serverTimestamp(),
-      updatedBy:     'WhatsApp webhook',
-      updatedAt:     admin.firestore.FieldValue.serverTimestamp()
-    };
-
-    if (possibleDuplicateOfId) {
-      ticket.possibleDuplicateOf = possibleDuplicateOfId;
-    }
-
-    await db.collection('tickets').add(ticket);
+    // The ticket document was already created inside the transaction above
+    // (tx.set()) -- everything below here is side effects outside
+    // Firestore (outbound WhatsApp sends, logging), which is exactly why
+    // they're not inside the transaction body.
     // No automatic issue-type selection prompt is sent. Agents can triage on
     // the dashboard, while only the after-hours notice remains for offline hours.
     if (selectedIssueType) {

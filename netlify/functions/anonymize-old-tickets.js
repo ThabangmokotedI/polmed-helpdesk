@@ -1,14 +1,24 @@
 // netlify/functions/anonymize-old-tickets.js
 // Scheduled: runs daily. Any ticket older than 12 months (POPIA retention
-// rule stated on the Setup page) gets its personal data stripped, while
-// keeping the fields needed for historical reporting: status, contact
-// method, issue type, dates, and resolution timing.
+// rule stated on the Setup page) that is also in a CLOSED status gets its
+// personal data stripped, while keeping the fields needed for historical
+// reporting: status, contact method, issue type, dates, and resolution
+// timing.
 //
-// Personal data removed: phoneNumber, identifier, message, description,
-// resolutionDescription, conversation (full text + any attachments),
-// and any mediaPath (the actual files are also deleted from Storage).
-// The audit trail (auditLog) is kept for accountability, but any
-// "from"/"to" values that held personal data are blanked out — who
+// Still-open tickets (New / In Progress / Stale) are skipped regardless of
+// age — anonymizing a ticket nobody has finished handling would strip the
+// contact info and message content an agent still needs to actually work
+// it, making it permanently unresolvable. Resolved / Unresolved /
+// Redirected / Merged are the closed states eligible for anonymization.
+//
+// Personal data removed: phoneNumber, identifier, message,
+// lastMemberMessage, description, resolutionDescription, conversation
+// (full text + any attachments), mergedConversation (the backup copy kept
+// on a Merged ticket for the "undo merge" feature — otherwise it would
+// still hold the original PII even after the live conversation field is
+// wiped), fromEmail, and any mediaPath (the actual files are also deleted
+// from Storage). The audit trail (auditLog) is kept for accountability,
+// but any "from"/"to" values that held personal data are blanked out — who
 // changed the ticket and when is preserved, what they typed is not.
 //
 // A ticket is only ever processed once: anonymized:true is set when done,
@@ -35,6 +45,10 @@ if (!admin.apps.length) {
     }
   }
 }
+
+// Anonymizing one of these would strip the info an agent still needs to
+// actually handle the ticket — age alone isn't enough, it has to be done.
+const OPEN_STATUSES = new Set(['New', 'In Progress', 'Stale']);
 
 // Fields that carry personal data inside each auditLog entry's "changes"
 // array — their from/to values get blanked, everything else (changedBy,
@@ -70,7 +84,15 @@ async function deleteMediaFiles(paths) {
   }
 }
 
-exports.handler = async function () {
+exports.handler = async function (event) {
+  // This job permanently deletes personal data and files — it must only
+  // ever run on its own schedule, never on an arbitrary request to its
+  // public function URL.
+  const nfEvent = event?.headers?.['x-nf-event'] || event?.headers?.['X-NF-Event'];
+  if (nfEvent !== 'schedule') {
+    return { statusCode: 401, body: 'This function only runs on its own schedule.' };
+  }
+
   if (!admin.apps.length) {
     console.error('Firebase not initialized — missing env vars');
     return { statusCode: 500, body: 'Firebase not initialized' };
@@ -83,12 +105,13 @@ exports.handler = async function () {
 
   let checked = 0;
   let anonymized = 0;
+  let skippedOpen = 0;
 
   try {
     // Single-field query on createdAt — no composite index needed.
-    // "already anonymized" is filtered in memory rather than as a second
-    // where() clause, to avoid requiring another composite index for a
-    // once-a-day background job.
+    // "already anonymized" / "still open" are filtered in memory rather
+    // than as extra where() clauses, to avoid requiring composite indexes
+    // for a once-a-day background job.
     const snap = await db.collection('tickets')
       .where('createdAt', '<=', admin.firestore.Timestamp.fromMillis(cutoffMs))
       .get();
@@ -99,6 +122,7 @@ exports.handler = async function () {
     for (const doc of snap.docs) {
       const data = doc.data();
       if (data.anonymized === true) continue;
+      if (OPEN_STATUSES.has(data.status)) { skippedOpen++; continue; }
 
       // Collect every media file this ticket references, before wiping
       // the fields that point to them.
@@ -107,18 +131,24 @@ exports.handler = async function () {
       if (Array.isArray(data.conversation)) {
         data.conversation.forEach(e => { if (e.mediaPath) mediaPaths.push(e.mediaPath); });
       }
+      if (Array.isArray(data.mergedConversation)) {
+        data.mergedConversation.forEach(e => { if (e.mediaPath) mediaPaths.push(e.mediaPath); });
+      }
       await deleteMediaFiles(mediaPaths);
 
       batch.update(doc.ref, {
         phoneNumber: admin.firestore.FieldValue.delete(),
         identifier: '',
         message: '[anonymized]',
+        lastMemberMessage: data.lastMemberMessage ? '[anonymized]' : data.lastMemberMessage,
         description: data.description ? '[anonymized]' : data.description,
         resolutionDescription: data.resolutionDescription ? '[anonymized]' : data.resolutionDescription,
         conversation: admin.firestore.FieldValue.delete(),
+        mergedConversation: admin.firestore.FieldValue.delete(),
         mediaPath: admin.firestore.FieldValue.delete(),
         mediaType: admin.firestore.FieldValue.delete(),
         typingBy: admin.firestore.FieldValue.delete(),
+        fromEmail: data.fromEmail ? '[anonymized]' : data.fromEmail,
         auditLog: scrubAuditLog(data.auditLog),
         anonymized: true,
         anonymizedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -130,8 +160,8 @@ exports.handler = async function () {
 
     if (anonymized > 0) await batch.commit();
 
-    console.log(`Anonymize check: ${checked} tickets past 12 months, ${anonymized} newly anonymized`);
-    return { statusCode: 200, body: JSON.stringify({ checked, anonymized }) };
+    console.log(`Anonymize check: ${checked} tickets past 12 months, ${anonymized} newly anonymized, ${skippedOpen} skipped (still open)`);
+    return { statusCode: 200, body: JSON.stringify({ checked, anonymized, skippedOpen }) };
 
   } catch (err) {
     console.error('Anonymize job failed:', err.message);

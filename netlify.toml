@@ -8,3 +8,6 @@
 [functions."mark-stale-tickets"]
   schedule = "0 4 * * *"
 
+[functions."anonymize-old-tickets"]
+  schedule = "30 4 * * *"
+
