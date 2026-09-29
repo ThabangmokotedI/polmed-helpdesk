@@ -1231,8 +1231,30 @@ body {
 }
 .kpi-label { font-size: 11px; font-weight: 500; color: var(--text-2); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
 .kpi-num   { font-size: 26px; font-weight: 700; color: var(--text-1); line-height: 1; }
-.kpi-num.res { color: #10B981; }
-.kpi-num.wa  { color: #25D366; }
+.kpi-num.res   { color: #10B981; }
+.kpi-num.wa    { color: #25D366; }
+.kpi-num.prog  { color: var(--badge-prog-t); }
+.kpi-num.unres { color: var(--badge-unres-t); }
+
+.kpi-section-label {
+  font-size: 12px; font-weight: 600; color: var(--text-1);
+  margin: 4px 0 10px; display: flex; align-items: center; gap: 6px;
+}
+.kpi-section-label:not(:first-child) { margin-top: 22px; }
+.kpi-section-label-muted { color: var(--text-2); font-weight: 500; }
+.kpi-info {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 15px; height: 15px; border-radius: 50%;
+  background: var(--surface-1); color: var(--text-2);
+  font-size: 10px; font-style: normal; cursor: help;
+}
+.kpi-row-muted .kpi-card { padding: 12px 16px; }
+.kpi-row-muted .kpi-num { font-size: 20px; }
+.kpi-card.kpi-muted { background: var(--surface-1); border-style: dashed; cursor: help; }
+.kpi-note {
+  font-size: 12px; color: var(--text-2); line-height: 1.5;
+  margin: -4px 0 4px;
+}
 
 /* Charts grid */
 .charts-grid {

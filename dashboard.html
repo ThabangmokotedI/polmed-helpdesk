@@ -192,18 +192,60 @@
         </div>
 
         <!-- KPI cards -->
+        <div class="kpi-section-label">Countable tickets <span class="kpi-info" title="Resolved + In Progress + Unresolved — the same three categories used in the POLMED monthly report. Excludes tickets that aren't triaged yet, have gone quiet, or aren't something the helpdesk resolves.">i</span></div>
         <div class="kpi-row">
+          <div class="kpi-card" title="Resolved + In Progress + Unresolved.">
+            <div class="kpi-label">Countable Tickets</div>
+            <div class="kpi-num" id="r-countable">—</div>
+          </div>
           <div class="kpi-card">
-            <div class="kpi-label">Total Tickets</div>
-            <div class="kpi-num" id="r-total">—</div>
+            <div class="kpi-label">Resolved</div>
+            <div class="kpi-num res" id="r-resolved">—</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">In Progress</div>
+            <div class="kpi-num prog" id="r-inprogress">—</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Unresolved</div>
+            <div class="kpi-num unres" id="r-unresolved">—</div>
+          </div>
+          <div class="kpi-card" title="Resolved ÷ (Resolved + In Progress + Unresolved). Redirected tickets aren't counted as resolved — the helpdesk pointed the member elsewhere rather than solving it directly.">
+            <div class="kpi-label">Resolution Rate</div>
+            <div class="kpi-num res" id="r-rate">—</div>
           </div>
           <div class="kpi-card">
             <div class="kpi-label">Avg Resolution Time</div>
             <div class="kpi-num" id="r-avg-rt">—</div>
           </div>
+        </div>
+
+        <div class="kpi-section-label kpi-section-label-muted">Not yet counted</div>
+        <div class="kpi-row kpi-row-muted">
+          <div class="kpi-card kpi-muted" title="Just came in — not triaged yet.">
+            <div class="kpi-label">New</div>
+            <div class="kpi-num" id="r-new">—</div>
+          </div>
+          <div class="kpi-card kpi-muted" title="Member has gone quiet for 5+ days after our last reply — parked, not resolved.">
+            <div class="kpi-label">Stale</div>
+            <div class="kpi-num" id="r-stale">—</div>
+          </div>
+          <div class="kpi-card kpi-muted" title="Not something the app helpdesk handles — the member was pointed elsewhere instead of us resolving it directly.">
+            <div class="kpi-label">Redirected</div>
+            <div class="kpi-num" id="r-redirected">—</div>
+          </div>
+          <div class="kpi-card kpi-muted" title="Folded into another ticket that's already counted above — kept for history, not counted twice.">
+            <div class="kpi-label">Merged</div>
+            <div class="kpi-num" id="r-merged">—</div>
+          </div>
+        </div>
+        <p class="kpi-note">These four don't count toward Resolution Rate or Avg Resolution Time — they're either not triaged yet, not something the helpdesk resolves, or already represented by another ticket above.</p>
+
+        <div class="kpi-section-label">All tickets received <span class="kpi-info" title="Every ticket in the period, including the four above — the raw inbound count. Not the same as Countable Tickets.">i</span></div>
+        <div class="kpi-row">
           <div class="kpi-card">
-            <div class="kpi-label">Resolution Rate</div>
-            <div class="kpi-num res" id="r-rate">—</div>
+            <div class="kpi-label">All Tickets Received</div>
+            <div class="kpi-num" id="r-total">—</div>
           </div>
           <div class="kpi-card">
             <div class="kpi-label">WhatsApp</div>
@@ -231,7 +273,7 @@
           </div>
 
           <div class="chart-card">
-            <div class="chart-title">Status Breakdown</div>
+            <div class="chart-title">Status Breakdown <span class="kpi-info" title="All tickets in the period, including New/Stale/Redirected/Merged. This total matches All Tickets Received above, not Countable Tickets.">i</span></div>
             <div id="status-chart" class="donut-container"></div>
           </div>
 

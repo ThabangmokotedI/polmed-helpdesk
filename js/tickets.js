@@ -9,7 +9,7 @@ const fsMod   = await import('https://www.gstatic.com/firebasejs/10.12.0/firebas
 const { initializeApp, getAuth, onAuthStateChanged, signOut: fbSignOut, EmailAuthProvider, reauthenticateWithCredential } = { ...appMod, ...authMod };
 const { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc,
   onSnapshot, getDocs, query, orderBy, startAfter, limit, serverTimestamp,
-  Timestamp, getDoc, setDoc, arrayUnion } = fsMod;
+  Timestamp, getDoc, setDoc, arrayUnion, where, getCountFromServer } = fsMod;
 
 const HARARE_TIME_ZONE = 'Africa/Harare';
 
@@ -302,19 +302,40 @@ function listenToHealth() {
 }
 
 // ── Stats bar ─────────────────────────────────────────────────────────────────
+let headerStatsInFlight = false;
+async function refreshHeaderStats() {
+  // Aggregation queries against the whole collection, not the `tickets`
+  // array — that array only holds whatever page of tickets has been loaded
+  // (TICKET_PAGE_SIZE, growing with "Load older tickets"), so counting it
+  // directly made "Total" and everything else here reflect however many
+  // tickets happened to be in memory rather than the real count in Firestore.
+  if (headerStatsInFlight) return;
+  headerStatsInFlight = true;
+  try {
+    const base = collection(db, 'tickets');
+    const [totalSnap, progSnap, resSnap, unresSnap, waSnap, emSnap] = await Promise.all([
+      getCountFromServer(query(base)),
+      getCountFromServer(query(base, where('status', '==', 'In Progress'))),
+      getCountFromServer(query(base, where('status', '==', 'Resolved'))),
+      getCountFromServer(query(base, where('status', '==', 'Unresolved'))),
+      getCountFromServer(query(base, where('contactMethod', '==', 'WhatsApp'))),
+      getCountFromServer(query(base, where('contactMethod', '==', 'Email'))),
+    ]);
+    document.getElementById('stat-total').textContent = totalSnap.data().count;
+    document.getElementById('stat-prog').textContent  = progSnap.data().count;
+    document.getElementById('stat-res').textContent   = resSnap.data().count;
+    document.getElementById('stat-unres').textContent = unresSnap.data().count;
+    document.getElementById('stat-wa').textContent    = waSnap.data().count;
+    document.getElementById('stat-email').textContent = emSnap.data().count;
+  } catch (err) {
+    console.error('Could not load header stats:', err.message);
+  } finally {
+    headerStatsInFlight = false;
+  }
+}
+
 function renderStats() {
-  const total  = tickets.length;
-  const prog   = tickets.filter(t => t.status === 'In Progress').length;
-  const res    = tickets.filter(t => t.status === 'Resolved').length;
-  const unres  = tickets.filter(t => t.status === 'Unresolved').length;
-  const wa     = tickets.filter(t => t.contactMethod === 'WhatsApp').length;
-  const em     = tickets.filter(t => t.contactMethod === 'Email').length;
-  document.getElementById('stat-total').textContent = total;
-  document.getElementById('stat-prog').textContent  = prog;
-  document.getElementById('stat-res').textContent   = res;
-  document.getElementById('stat-unres').textContent = unres;
-  document.getElementById('stat-wa').textContent    = wa;
-  document.getElementById('stat-email').textContent = em;
+  refreshHeaderStats();
   renderUnreadCount();
 }
 
@@ -639,17 +660,21 @@ function formatDuration(ms) {
   return `${days} day${days === 1 ? '' : 's'}`;
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  const statusField = document.getElementById('f-status');
-  if (statusField) {
-    statusField.addEventListener('change', () => {
-      if (editingId) {
-        const t = tickets.find(x => x.id === editingId);
-        if (t) autoFillTimingFields(t);
-      }
-    });
-  }
-});
+// tickets.js is loaded as a module script, which already runs after the
+// document has finished parsing — by this point DOMContentLoaded has
+// normally already fired, so waiting for it here meant this listener was
+// never actually attached and the auto-fill below never ran. f-status is
+// static markup in dashboard.html, so it's already on the page; attach
+// directly instead of waiting for an event that has already happened.
+const statusField = document.getElementById('f-status');
+if (statusField) {
+  statusField.addEventListener('change', () => {
+    if (editingId) {
+      const t = tickets.find(x => x.id === editingId);
+      if (t) autoFillTimingFields(t);
+    }
+  });
+}
 
 const ISSUE_KEYWORDS = {
   'Login Issue':                ['login', 'log in', 'can\'t log', 'cannot log', 'password incorrect', 'wrong password', 'sign in'],
@@ -1769,6 +1794,20 @@ function clearForm() {
 // ═════════════════════════════════════════════════════════════════════════════
 //  REPORTS DASHBOARD
 // ═════════════════════════════════════════════════════════════════════════════
+// Single source of truth for status counts, shared by the on-screen Reports
+// page and the CSV export so the two can never disagree. Uses displayStatus()
+// rather than the raw status field so a ticket that's gone quiet shows up as
+// Stale here exactly like it does everywhere else in the UI.
+const ALL_STATUSES = ['New', 'In Progress', 'Resolved', 'Redirected', 'Unresolved', 'Merged', 'Stale'];
+function countByStatus(subset) {
+  const counts = Object.fromEntries(ALL_STATUSES.map(s => [s, 0]));
+  subset.forEach(t => {
+    const s = displayStatus(t);
+    if (s in counts) counts[s]++;
+  });
+  return counts;
+}
+
 async function renderReports() {
   if (!reportTickets) {
     if (loadingReportTickets) return;
@@ -1792,26 +1831,42 @@ async function renderReports() {
   if (reportTitle) reportTitle.textContent = `Tickets per Month (${periodOption})`;
 
   const total      = subset.length;
-  const resolved   = subset.filter(t => t.status === 'Resolved').length;
-const handled    = subset.filter(t => t.status === 'Resolved' || t.status === 'Redirected').length;
-  const rtValues   = subset.filter(t => t.status === 'Resolved')
+  const counts     = countByStatus(subset);
+  // "Countable" mirrors the three categories the POLMED monthly report has
+  // always used (Resolved / In Progress / Unresolved) — New, Stale,
+  // Redirected and Merged are newer, more granular statuses the live system
+  // tracks that aren't part of that reporting definition, so they're kept
+  // visible separately instead of being folded into Resolution Rate.
+  const countable  = counts.Resolved + counts['In Progress'] + counts.Unresolved;
+  const resRate    = countable ? Math.round((counts.Resolved / countable) * 100) : null;
+  const rtValues   = subset.filter(t => displayStatus(t) === 'Resolved')
                            .map(ticketResolutionHours)
                            .filter(hours => hours > 0);
   const avgRT      = rtValues.length
     ? (rtValues.reduce((a, b) => a + b, 0) / rtValues.length).toFixed(1)
     : '—';
-  const resRate    = total ? Math.round((handled / total) * 100) : 0;
   const waCount    = subset.filter(t => t.contactMethod === 'WhatsApp').length;
   const emCount    = subset.filter(t => t.contactMethod === 'Email').length;
   const phCount    = subset.filter(t => t.contactMethod === 'Phone call').length;
   const inpCount   = subset.filter(t => t.contactMethod === 'In person').length;
 
-  document.getElementById('r-total').textContent   = total;
+  document.getElementById('r-total').textContent       = total;
+  document.getElementById('r-countable').textContent   = countable;
+  document.getElementById('r-resolved').textContent    = counts.Resolved;
+  document.getElementById('r-inprogress').textContent  = counts['In Progress'];
+  document.getElementById('r-unresolved').textContent  = counts.Unresolved;
+  document.getElementById('r-new').textContent         = counts.New;
+  document.getElementById('r-stale').textContent       = counts.Stale;
+  document.getElementById('r-redirected').textContent  = counts.Redirected;
+  document.getElementById('r-merged').textContent      = counts.Merged;
   document.getElementById('r-avg-rt').textContent  = avgRT === '—' ? '—' : avgRT + ' hrs';
   document.getElementById('r-avg-rt').title = avgRT === '—'
     ? 'No resolved tickets in this period have a recorded resolution time.'
     : `Average from ${rtValues.length} resolved ticket${rtValues.length === 1 ? '' : 's'} with recorded timing`;
-  document.getElementById('r-rate').textContent    = total ? resRate + '%' : '—';
+  document.getElementById('r-rate').textContent    = resRate === null ? '—' : resRate + '%';
+  document.getElementById('r-rate').title = resRate === null
+    ? 'No countable tickets (Resolved + In Progress + Unresolved) in this period yet.'
+    : `${counts.Resolved} Resolved ÷ ${countable} countable tickets`;
   document.getElementById('r-wa').textContent      = waCount;
   document.getElementById('r-email').textContent   = emCount;
   document.getElementById('r-phone').textContent   = phCount;
@@ -1974,18 +2029,24 @@ function buildDonutHTML(dataArr) {
 }
 
 function renderStatusChart(subset) {
+  // Every status displayStatus() can return must have a slice here, or
+  // that whole group of tickets silently disappears from the donut and its
+  // center total stops matching "All Tickets Received" above it — Stale was
+  // missing this way for a long time (it's usually the single biggest slice).
   const statuses = [
     { label: 'New',         key: 'New',         color: '#8B5CF6' },
     { label: 'In Progress', key: 'In Progress',  color: '#3B82F6' },
     { label: 'Resolved',    key: 'Resolved',     color: '#10B981' },
+    { label: 'Stale',       key: 'Stale',        color: '#F59E0B' },
     { label: 'Redirected',  key: 'Redirected',   color: '#64748B' },
     { label: 'Unresolved',  key: 'Unresolved',   color: '#EF4444' },
-    { label: 'Merged',       key: 'Merged',       color: '#8B5CF6' },
+    { label: 'Merged',      key: 'Merged',       color: '#CBD5E1' },
   ];
+  const counts = countByStatus(subset);
   const dataArr = statuses.map(s => ({
     label: s.label,
     color: s.color,
-    val: subset.filter(t => displayStatus(t) === s.key).length
+    val: counts[s.key]
   }));
   document.getElementById('status-chart').innerHTML = buildDonutHTML(dataArr);
 }
@@ -2068,11 +2129,12 @@ window.downloadStatsCSV = async function () {
   if (!reportTickets) await renderReports();
   const subset       = applyPeriodFilter((reportTickets || []).filter(t => t.archived !== true), period);
 
-  const total    = subset.length;
-  const handled  = subset.filter(t => t.status === 'Resolved' || t.status === 'Redirected').length;
-  const rtValues = subset.filter(t => t.status === 'Resolved').map(ticketResolutionHours).filter(hours => hours > 0);
-  const avgRT    = rtValues.length ? (rtValues.reduce((a, b) => a + b, 0) / rtValues.length).toFixed(1) : '';
-  const resRate  = total ? Math.round((handled / total) * 100) : 0;
+  const total     = subset.length;
+  const counts    = countByStatus(subset);
+  const countable = counts.Resolved + counts['In Progress'] + counts.Unresolved;
+  const rtValues  = subset.filter(t => displayStatus(t) === 'Resolved').map(ticketResolutionHours).filter(hours => hours > 0);
+  const avgRT     = rtValues.length ? (rtValues.reduce((a, b) => a + b, 0) / rtValues.length).toFixed(1) : '';
+  const resRate   = countable ? Math.round((counts.Resolved / countable) * 100) : '';
 
   const rows = [];
   rows.push(['POLMED Connect Helpdesk — Report Export']);
@@ -2080,10 +2142,21 @@ window.downloadStatsCSV = async function () {
   rows.push(['Generated', formatHarareDateTime(new Date())]);
   rows.push([]);
 
-  rows.push(['KPI', 'Value']);
-  rows.push(['Total Tickets', total]);
-  rows.push(['Avg Resolution Time (hrs)', avgRT]);
-  rows.push(['Resolution Rate (%)', total ? resRate : '']);
+  rows.push(['KPI', 'Value', 'Notes']);
+  rows.push(['All Tickets Received', total, 'Every ticket in the period, all statuses']);
+  rows.push(['Countable Tickets', countable, 'Resolved + In Progress + Unresolved (matches the POLMED report categories)']);
+  rows.push(['Resolved', counts.Resolved, '']);
+  rows.push(['In Progress', counts['In Progress'], '']);
+  rows.push(['Unresolved', counts.Unresolved, '']);
+  rows.push(['Resolution Rate (%)', resRate, 'Resolved ÷ Countable Tickets']);
+  rows.push(['Avg Resolution Time (hrs)', avgRT, 'Resolved tickets with a recorded resolution time only']);
+  rows.push(['New (not yet counted)', counts.New, 'Not triaged yet']);
+  rows.push(['Stale (not yet counted)', counts.Stale, 'Member went quiet 5+ days after our last reply']);
+  rows.push(['Redirected (not yet counted)', counts.Redirected, "Not an app issue — pointed elsewhere, not resolved by us"]);
+  rows.push(['Merged (not yet counted)', counts.Merged, 'Folded into another ticket already counted above']);
+  rows.push([]);
+
+  rows.push(['Contact Channel', 'Count']);
   rows.push(['WhatsApp', subset.filter(t => t.contactMethod === 'WhatsApp').length]);
   rows.push(['Email', subset.filter(t => t.contactMethod === 'Email').length]);
   rows.push(['Phone call', subset.filter(t => t.contactMethod === 'Phone call').length]);
@@ -2100,16 +2173,14 @@ window.downloadStatsCSV = async function () {
   Object.entries(issueCounts).sort((a, b) => b[1] - a[1]).forEach(([label, val]) => rows.push([label, val]));
   rows.push([]);
 
-  rows.push(['Status Breakdown']);
+  rows.push(['Status Breakdown (all tickets, incl. not-yet-counted)']);
   rows.push(['Status', 'Count']);
-  ['New', 'In Progress', 'Resolved', 'Redirected', 'Unresolved', 'Merged'].forEach(s => {
-    rows.push([s, subset.filter(t => displayStatus(t) === s).length]);
-  });
+  ALL_STATUSES.forEach(s => rows.push([s, counts[s]]));
   rows.push([]);
 
   rows.push(['Resolution Time Buckets (Resolved tickets only)']);
   rows.push(['Bucket', 'Count']);
-  const resolvedForBuckets = subset.filter(t => t.status === 'Resolved').map(t => ({ ticket: t, hours: ticketResolutionHours(t) })).filter(item => item.hours > 0);
+  const resolvedForBuckets = subset.filter(t => displayStatus(t) === 'Resolved').map(t => ({ ticket: t, hours: ticketResolutionHours(t) })).filter(item => item.hours > 0);
   const buckets = [
     { label: 'Under 1 hour',  test: h => h < 1 },
     { label: '1–4 hours',     test: h => h >= 1 && h < 4 },
