@@ -120,6 +120,7 @@ exports.handler = async function (event) {
     recipient,
     dateReceived:  `${received.year}-${received.month}-${received.day}`,
     timeReceived:  `${received.hour}:${received.minute}:${received.second}`,
+    hasNewReply:   true, // same reasoning as whatsapp-webhook.js's create path
     createdBy:     'Email webhook',
     createdAt:     admin.firestore.FieldValue.serverTimestamp(),
     updatedBy:     'Email webhook',

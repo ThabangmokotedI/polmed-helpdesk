@@ -488,6 +488,12 @@ exports.handler = async function (event) {
         conversation:  [{ from: 'member', text, mediaPath, mediaType, waMessageId, at: now.toISOString() }],
         dateReceived:  received.date,
         timeReceived:  received.time,
+        // A brand-new ticket needs a reply just as much as a new message on
+        // an existing one does -- this was never set here at all, so a
+        // first-ever message had no unread indicator (the New-status pin
+        // in the ticket list used to paper over that; removing the pin
+        // made the gap visible).
+        hasNewReply:   true,
         createdBy:     'WhatsApp webhook',
         createdAt:     admin.firestore.FieldValue.serverTimestamp(),
         updatedBy:     'WhatsApp webhook',
