@@ -2,11 +2,27 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --teal: #1A7DA0;
-  --teal-dark: #125E78;
+  /* Brand teal is the exact color of the POLMED Connect logo (#006A94) —
+     everything else in this file is derived from it rather than picked
+     freehand, so the site's chrome and its charts stay visibly one brand. */
+  --teal: #006A94;
+  --teal-dark: #004F70;
   --teal-light: #E3F4FA;
   --navy: #00354A;
   --navy-mid: #004F6E;
+
+  /* Chart / accent palette — validated for colorblind-safe adjacency
+     (see the dataviz skill) with brand teal anchored as slot 1. Used by
+     the Reports page charts and anywhere else more than one category
+     needs its own color, instead of ad hoc hex per component. */
+  --cat-teal:    #006A94;
+  --cat-orange:  #eb6834;
+  --cat-aqua:    #1baf7a;
+  --cat-yellow:  #eda100;
+  --cat-magenta: #e87ba4;
+  --cat-green:   #008300;
+  --cat-violet:  #4a3aa7;
+  --cat-red:     #e34948;
   --row-tint: #F2F8FB;
   --bg: #F0F4F6;
   --surface: #FFFFFF;
@@ -22,7 +38,7 @@
   --surface-1: var(--bg);
   --sidebar-bg: #00354A;
   --sidebar-text: rgba(255,255,255,0.7);
-  --sidebar-active: rgba(26,125,160,0.3);
+  --sidebar-active: rgba(0,106,148,0.3);
   --sidebar-active-text: #7DD6F0;
   --badge-res-bg: #E9F7EF; --badge-res-t: #1E8449;
   --badge-prog-bg: #FEF9E7; --badge-prog-t: #9A6300;
@@ -54,11 +70,11 @@
 }
 
 .stats-row .stat-card:nth-child(1)::before { background: var(--teal); }
-.stats-row .stat-card:nth-child(2)::before { background: #F5A52A; }
-.stats-row .stat-card:nth-child(3)::before { background: #1E8449; }
-.stats-row .stat-card:nth-child(4)::before { background: #C0392B; }
-.stats-row .stat-card:nth-child(5)::before { background: #25D366; }
-.stats-row .stat-card:nth-child(6)::before { background: #3B82F6; }
+.stats-row .stat-card:nth-child(2)::before { background: var(--cat-yellow); }
+.stats-row .stat-card:nth-child(3)::before { background: var(--cat-green); }
+.stats-row .stat-card:nth-child(4)::before { background: var(--cat-red); }
+.stats-row .stat-card:nth-child(5)::before { background: var(--cat-aqua); }
+.stats-row .stat-card:nth-child(6)::before { background: var(--teal-dark); }
 
 .topbar {
   background: linear-gradient(180deg, #FFFFFF 0%, #FCFEFF 100%);
@@ -420,13 +436,13 @@ body {
 }
 
 .btn-primary {
-  background: linear-gradient(180deg, #1E8DB3 0%, var(--teal) 100%);
+  background: linear-gradient(180deg, #1584A8 0%, var(--teal) 100%);
   box-shadow: 0 1px 2px rgba(0,53,74,0.1), inset 0 1px 0 rgba(255,255,255,0.15);
 }
 
 .btn-primary:hover {
-  background: linear-gradient(180deg, #1E8DB3 0%, var(--teal-dark) 100%);
-  box-shadow: 0 4px 10px rgba(26,125,160,0.28);
+  background: linear-gradient(180deg, #1584A8 0%, var(--teal-dark) 100%);
+  box-shadow: 0 4px 10px rgba(0,106,148,0.28);
 }
 
 .btn-primary:active {
@@ -1219,6 +1235,36 @@ body {
   font-size: 13px; color: var(--text-1); cursor: pointer;
 }
 
+/* Headline summary — one sentence + a ring instead of a wall of cards */
+.report-headline {
+  display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
+  background: var(--surface-0); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 22px 26px; margin-bottom: 12px;
+}
+.headline-ring {
+  width: 120px; height: 120px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: conic-gradient(var(--border) 0% 100%);
+}
+.headline-ring-hole {
+  width: 92px; height: 92px; border-radius: 50%; background: var(--surface-0);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.headline-ring-pct { font-size: 26px; font-weight: 700; color: var(--teal); line-height: 1.1; }
+.headline-ring-caption { font-size: 11px; color: var(--text-2); text-transform: uppercase; letter-spacing: .4px; }
+.headline-text { flex: 1; min-width: 200px; }
+.headline-sentence { font-size: 19px; font-weight: 600; color: var(--text-1); line-height: 1.4; }
+.headline-sub { font-size: 13px; color: var(--text-2); margin-top: 4px; }
+.headline-rt { text-align: right; padding-left: 16px; border-left: 1px solid var(--border); }
+.headline-rt .kpi-num { font-size: 22px; }
+.report-details-toggle { margin-bottom: 20px; }
+.report-details-toggle .ui-icon { transition: transform .15s ease; }
+.report-details-toggle.open .ui-icon { transform: rotate(180deg); }
+@media (max-width: 640px) {
+  .report-headline { flex-direction: column; align-items: flex-start; }
+  .headline-rt { border-left: none; padding-left: 0; text-align: left; }
+}
+
 /* KPI cards */
 .kpi-row {
   display: grid;
@@ -1231,10 +1277,12 @@ body {
 }
 .kpi-label { font-size: 11px; font-weight: 500; color: var(--text-2); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
 .kpi-num   { font-size: 26px; font-weight: 700; color: var(--text-1); line-height: 1; }
-.kpi-num.res   { color: #10B981; }
-.kpi-num.wa    { color: #25D366; }
+.kpi-num.res   { color: var(--badge-res-t); }
 .kpi-num.prog  { color: var(--badge-prog-t); }
 .kpi-num.unres { color: var(--badge-unres-t); }
+/* .wa and .inp are deliberately plain — a channel count isn't a status,
+   so it doesn't need its own accent color (this used to be WhatsApp's
+   own green and an unrelated purple, both off-brand and not meaningful). */
 
 .kpi-section-label {
   font-size: 12px; font-weight: 600; color: var(--text-1);
@@ -1281,7 +1329,7 @@ body {
 .vbar-wrap  { flex: 1; width: 100%; display: flex; align-items: flex-end; }
 .vbar-fill  {
   width: 100%; min-height: 4px;
-  background: linear-gradient(180deg, #F5A52A, #e08c0e);
+  background: linear-gradient(180deg, #1584A8, var(--teal));
   border-radius: 5px 5px 0 0;
   transition: height .4s ease;
 }
@@ -1386,8 +1434,6 @@ body {
   color: var(--text);
 }
 
-/* In Person KPI color, to match the other channel KPI cards */
-.kpi-num.inp { color: #8B5CF6; }
 
 @media (max-width: 700px) {
   .donut-flex { flex-direction: column; align-items: flex-start; }
@@ -1410,6 +1456,12 @@ body {
   }
   .no-print {
     display: none !important;
+  }
+  /* The full breakdown is collapsed on screen by default, but a printed/PDF
+     report should always carry the complete numbers regardless of whatever
+     state the on-screen toggle happens to be in. */
+  #report-details {
+    display: block !important;
   }
 }
 .badge.stale { background: #F1F5F9; color: #64748B; }

@@ -1808,6 +1808,48 @@ function countByStatus(subset) {
   return counts;
 }
 
+// The one thing meant to be readable at a glance, for anyone who isn't
+// going to sit and parse a grid of KPI cards. Everything it summarizes is
+// still available underneath via "Show details".
+function renderHeadline(counts, countable, resRate, total) {
+  const ring      = document.getElementById('headline-ring');
+  const pctEl     = document.getElementById('headline-pct');
+  const sentenceEl = document.getElementById('headline-sentence');
+  const subEl     = document.getElementById('headline-sub');
+  if (!ring || !pctEl || !sentenceEl || !subEl) return;
+
+  if (!countable) {
+    ring.style.background = 'conic-gradient(var(--border) 0% 100%)';
+    pctEl.textContent = '—';
+    sentenceEl.textContent = total
+      ? `${total} ticket${total === 1 ? '' : 's'} received, none countable yet`
+      : 'No tickets in this period';
+    subEl.textContent = total ? 'They’re New, Stale, Redirected or Merged — see "Show details" below.' : '';
+    return;
+  }
+
+  ring.style.background = `conic-gradient(var(--teal) 0% ${resRate}%, var(--border) ${resRate}% 100%)`;
+  pctEl.textContent = resRate + '%';
+  sentenceEl.textContent = `${counts.Resolved} of ${countable} tickets resolved`;
+
+  const subParts = [];
+  if (counts['In Progress']) subParts.push(`${counts['In Progress']} still in progress`);
+  if (counts.Unresolved) subParts.push(`${counts.Unresolved} unresolved`);
+  subEl.textContent = subParts.length ? subParts.join(' · ') : 'Everything countable this period is resolved.';
+}
+
+function toggleReportDetails() {
+  const details = document.getElementById('report-details');
+  const btn     = document.getElementById('details-toggle');
+  const label   = document.getElementById('details-toggle-label');
+  if (!details || !btn) return;
+  const opening = details.style.display === 'none';
+  details.style.display = opening ? 'block' : 'none';
+  btn.classList.toggle('open', opening);
+  if (label) label.textContent = opening ? 'Hide details' : 'Show details';
+}
+window.toggleReportDetails = toggleReportDetails;
+
 async function renderReports() {
   if (!reportTickets) {
     if (loadingReportTickets) return;
@@ -1873,6 +1915,7 @@ async function renderReports() {
   const inpEl = document.getElementById('r-inperson');
   if (inpEl) inpEl.textContent = inpCount;
 
+  renderHeadline(counts, countable, resRate, subset.length);
   renderMonthlyChart(subset);
   renderIssueChart(subset);
   renderStatusChart(subset);
@@ -1981,7 +2024,12 @@ function renderIssueChart(subset) {
   });
   const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
   const maxVal = sorted[0]?.[1] || 1;
-  const colors = ['#F5A52A','#3B82F6','#10B981','#8B5CF6','#EF4444','#F59E0B','#06B6D4','#EC4899'];
+  // Every row already carries its own text label, so color here isn't doing
+  // identity work — it's just rank. One brand hue, lightest at the top and
+  // darkest by the bottom of a typical list, reads as "most brand" instead
+  // of cycling through unrelated hues once there are more than a handful
+  // of issue types.
+  const colors = ['#006A94', '#1F84A8', '#4FA3C2', '#7EC1D9', '#004F70'];
   document.getElementById('issue-chart').innerHTML =
     sorted.length ? sorted.map(([label, val], i) => `
       <div class="hbar-row">
@@ -2033,14 +2081,18 @@ function renderStatusChart(subset) {
   // that whole group of tickets silently disappears from the donut and its
   // center total stops matching "All Tickets Received" above it — Stale was
   // missing this way for a long time (it's usually the single biggest slice).
+  //
+  // Colors are the brand palette in its validated order (dataviz skill —
+  // colorblind-safe adjacency was checked for exactly this sequence, so
+  // don't reorder these rows without re-validating).
   const statuses = [
-    { label: 'New',         key: 'New',         color: '#8B5CF6' },
-    { label: 'In Progress', key: 'In Progress',  color: '#3B82F6' },
-    { label: 'Resolved',    key: 'Resolved',     color: '#10B981' },
-    { label: 'Stale',       key: 'Stale',        color: '#F59E0B' },
-    { label: 'Redirected',  key: 'Redirected',   color: '#64748B' },
-    { label: 'Unresolved',  key: 'Unresolved',   color: '#EF4444' },
-    { label: 'Merged',      key: 'Merged',       color: '#CBD5E1' },
+    { label: 'In Progress', key: 'In Progress', color: 'var(--cat-teal)' },
+    { label: 'Redirected',  key: 'Redirected',  color: 'var(--cat-orange)' },
+    { label: 'New',         key: 'New',         color: 'var(--cat-aqua)' },
+    { label: 'Stale',       key: 'Stale',       color: 'var(--cat-yellow)' },
+    { label: 'Merged',      key: 'Merged',      color: 'var(--cat-magenta)' },
+    { label: 'Resolved',    key: 'Resolved',    color: 'var(--cat-green)' },
+    { label: 'Unresolved',  key: 'Unresolved',  color: 'var(--cat-violet)' },
   ];
   const counts = countByStatus(subset);
   const dataArr = statuses.map(s => ({
@@ -2052,11 +2104,15 @@ function renderStatusChart(subset) {
 }
 
 function renderContactChart(subset) {
+  // Same brand-palette prefix as the status donut (slots 1-4), so a color
+  // here never has to fight the status chart's colors for meaning — each
+  // donut is its own legend, but pulling from one set keeps the whole
+  // Reports page reading as one system instead of two rainbows.
   const channels = [
-    { label: 'WhatsApp',   key: 'WhatsApp',   color: '#25D366' },
-    { label: 'Email',      key: 'Email',      color: '#3B82F6' },
-    { label: 'Phone call', key: 'Phone call', color: '#F5A52A' },
-    { label: 'In person',  key: 'In person',  color: '#8B5CF6' },
+    { label: 'WhatsApp',   key: 'WhatsApp',   color: 'var(--cat-teal)' },
+    { label: 'Email',      key: 'Email',      color: 'var(--cat-orange)' },
+    { label: 'Phone call', key: 'Phone call', color: 'var(--cat-aqua)' },
+    { label: 'In person',  key: 'In person',  color: 'var(--cat-yellow)' },
   ];
   const dataArr = channels.map(c => ({
     label: c.label,
@@ -2083,7 +2139,10 @@ function renderResolutionChart(subset) {
   ];
   const counts = buckets.map(b => resolved.filter(item => b.test(item.hours)).length);
   const maxVal = Math.max(...counts, 1);
-  const colors = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444'];
+  // Ordinal by duration (fastest -> slowest), so color tells the same story
+  // as the bucket order: brand teal for a fast resolution, shading through
+  // amber into red as it takes longer.
+  const colors = ['#006A94', '#1F84A8', 'var(--cat-yellow)', 'var(--cat-red)'];
 
   if (!resolved.length) {
     el.innerHTML = '<p class="chart-empty">No resolved tickets with a recorded time yet</p>';

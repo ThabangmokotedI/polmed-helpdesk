@@ -191,77 +191,98 @@
     <button type="button" class="btn btn-sm no-print" onclick="refreshReports()"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 0-15.3-6.4L3 8M3 3v5h5M3 12a9 9 0 0 0 15.3 6.4L21 16M21 21v-5h-5"/></svg> Refresh report</button>
         </div>
 
-        <!-- KPI cards -->
-        <div class="kpi-section-label">Countable tickets <span class="kpi-info" title="Resolved + In Progress + Unresolved — the same three categories used in the POLMED monthly report. Excludes tickets that aren't triaged yet, have gone quiet, or aren't something the helpdesk resolves.">i</span></div>
-        <div class="kpi-row">
-          <div class="kpi-card" title="Resolved + In Progress + Unresolved.">
-            <div class="kpi-label">Countable Tickets</div>
-            <div class="kpi-num" id="r-countable">—</div>
+        <!-- Headline summary — the one thing to glance at -->
+        <div class="report-headline">
+          <div class="headline-ring" id="headline-ring">
+            <div class="headline-ring-hole">
+              <span class="headline-ring-pct" id="headline-pct">—</span>
+              <span class="headline-ring-caption">resolved</span>
+            </div>
           </div>
-          <div class="kpi-card">
-            <div class="kpi-label">Resolved</div>
-            <div class="kpi-num res" id="r-resolved">—</div>
+          <div class="headline-text">
+            <div class="headline-sentence" id="headline-sentence">Loading…</div>
+            <div class="headline-sub" id="headline-sub"></div>
           </div>
-          <div class="kpi-card">
-            <div class="kpi-label">In Progress</div>
-            <div class="kpi-num prog" id="r-inprogress">—</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-label">Unresolved</div>
-            <div class="kpi-num unres" id="r-unresolved">—</div>
-          </div>
-          <div class="kpi-card" title="Resolved ÷ (Resolved + In Progress + Unresolved). Redirected tickets aren't counted as resolved — the helpdesk pointed the member elsewhere rather than solving it directly.">
-            <div class="kpi-label">Resolution Rate</div>
-            <div class="kpi-num res" id="r-rate">—</div>
-          </div>
-          <div class="kpi-card">
+          <div class="headline-rt">
             <div class="kpi-label">Avg Resolution Time</div>
             <div class="kpi-num" id="r-avg-rt">—</div>
           </div>
         </div>
+        <button type="button" class="btn btn-sm no-print report-details-toggle" id="details-toggle" onclick="toggleReportDetails()">
+          <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+          <span id="details-toggle-label">Show details</span>
+        </button>
 
-        <div class="kpi-section-label kpi-section-label-muted">Not yet counted</div>
-        <div class="kpi-row kpi-row-muted">
-          <div class="kpi-card kpi-muted" title="Just came in — not triaged yet.">
-            <div class="kpi-label">New</div>
-            <div class="kpi-num" id="r-new">—</div>
+        <!-- Full number breakdown — collapsed by default; the CSV/PDF export
+             always includes everything here regardless of this toggle. -->
+        <div id="report-details" class="report-details" style="display:none">
+          <div class="kpi-section-label">Countable tickets <span class="kpi-info" title="Resolved + In Progress + Unresolved — the same three categories used in the POLMED monthly report. Excludes tickets that aren't triaged yet, have gone quiet, or aren't something the helpdesk resolves.">i</span></div>
+          <div class="kpi-row">
+            <div class="kpi-card" title="Resolved + In Progress + Unresolved.">
+              <div class="kpi-label">Countable Tickets</div>
+              <div class="kpi-num" id="r-countable">—</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Resolved</div>
+              <div class="kpi-num res" id="r-resolved">—</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">In Progress</div>
+              <div class="kpi-num prog" id="r-inprogress">—</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Unresolved</div>
+              <div class="kpi-num unres" id="r-unresolved">—</div>
+            </div>
+            <div class="kpi-card" title="Resolved ÷ (Resolved + In Progress + Unresolved). Redirected tickets aren't counted as resolved — the helpdesk pointed the member elsewhere rather than solving it directly.">
+              <div class="kpi-label">Resolution Rate</div>
+              <div class="kpi-num res" id="r-rate">—</div>
+            </div>
           </div>
-          <div class="kpi-card kpi-muted" title="Member has gone quiet for 5+ days after our last reply — parked, not resolved.">
-            <div class="kpi-label">Stale</div>
-            <div class="kpi-num" id="r-stale">—</div>
-          </div>
-          <div class="kpi-card kpi-muted" title="Not something the app helpdesk handles — the member was pointed elsewhere instead of us resolving it directly.">
-            <div class="kpi-label">Redirected</div>
-            <div class="kpi-num" id="r-redirected">—</div>
-          </div>
-          <div class="kpi-card kpi-muted" title="Folded into another ticket that's already counted above — kept for history, not counted twice.">
-            <div class="kpi-label">Merged</div>
-            <div class="kpi-num" id="r-merged">—</div>
-          </div>
-        </div>
-        <p class="kpi-note">These four don't count toward Resolution Rate or Avg Resolution Time — they're either not triaged yet, not something the helpdesk resolves, or already represented by another ticket above.</p>
 
-        <div class="kpi-section-label">All tickets received <span class="kpi-info" title="Every ticket in the period, including the four above — the raw inbound count. Not the same as Countable Tickets.">i</span></div>
-        <div class="kpi-row">
-          <div class="kpi-card">
-            <div class="kpi-label">All Tickets Received</div>
-            <div class="kpi-num" id="r-total">—</div>
+          <div class="kpi-section-label kpi-section-label-muted">Not yet counted</div>
+          <div class="kpi-row kpi-row-muted">
+            <div class="kpi-card kpi-muted" title="Just came in — not triaged yet.">
+              <div class="kpi-label">New</div>
+              <div class="kpi-num" id="r-new">—</div>
+            </div>
+            <div class="kpi-card kpi-muted" title="Member has gone quiet for 5+ days after our last reply — parked, not resolved.">
+              <div class="kpi-label">Stale</div>
+              <div class="kpi-num" id="r-stale">—</div>
+            </div>
+            <div class="kpi-card kpi-muted" title="Not something the app helpdesk handles — the member was pointed elsewhere instead of us resolving it directly.">
+              <div class="kpi-label">Redirected</div>
+              <div class="kpi-num" id="r-redirected">—</div>
+            </div>
+            <div class="kpi-card kpi-muted" title="Folded into another ticket that's already counted above — kept for history, not counted twice.">
+              <div class="kpi-label">Merged</div>
+              <div class="kpi-num" id="r-merged">—</div>
+            </div>
           </div>
-          <div class="kpi-card">
-            <div class="kpi-label">WhatsApp</div>
-            <div class="kpi-num wa" id="r-wa">—</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-label">Email</div>
-            <div class="kpi-num" id="r-email">—</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-label">Phone</div>
-            <div class="kpi-num" id="r-phone">—</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-label">In Person</div>
-            <div class="kpi-num inp" id="r-inperson">—</div>
+          <p class="kpi-note">These four don't count toward Resolution Rate or Avg Resolution Time — they're either not triaged yet, not something the helpdesk resolves, or already represented by another ticket above.</p>
+
+          <div class="kpi-section-label">All tickets received <span class="kpi-info" title="Every ticket in the period, including the four above — the raw inbound count. Not the same as Countable Tickets.">i</span></div>
+          <div class="kpi-row">
+            <div class="kpi-card">
+              <div class="kpi-label">All Tickets Received</div>
+              <div class="kpi-num" id="r-total">—</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">WhatsApp</div>
+              <div class="kpi-num" id="r-wa">—</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Email</div>
+              <div class="kpi-num" id="r-email">—</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Phone</div>
+              <div class="kpi-num" id="r-phone">—</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">In Person</div>
+              <div class="kpi-num" id="r-inperson">—</div>
+            </div>
           </div>
         </div>
 
