@@ -1343,6 +1343,11 @@ body {
 .hbar-fill   { height: 100%; border-radius: 99px; transition: width .4s ease; min-width: 4px; }
 .hbar-val    { font-size: 12px; font-weight: 600; color: var(--text-1); text-align: right; }
 .hbar-pct    { font-weight: 400; color: var(--text-2); margin-left: 4px; }
+.hbar-clickable {
+  cursor: pointer; border-radius: 8px; margin: 0 -8px; padding: 4px 8px;
+  transition: background .12s ease;
+}
+.hbar-clickable:hover { background: var(--row-tint); }
 
 /* ═══════════════════════════════════════════════════════════════
    SETUP PAGE ADDITIONS

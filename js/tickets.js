@@ -454,7 +454,7 @@ function filterTickets() {
       ? t.archived === true
       : (t.archived !== true || t.hasNewReply) && (!fs || status === fs);
     const mC = !fc || t.contactMethod === fc;
-    const mI = !fi || t.issueType === fi;
+    const mI = !fi || (fi === '__unspecified__' ? !t.issueType : t.issueType === fi);
     return mQ && mS && mC && mI;
   });
   filtered.sort((a, b) => {
@@ -2030,9 +2030,10 @@ function renderIssueChart(subset) {
   // of cycling through unrelated hues once there are more than a handful
   // of issue types.
   const colors = ['#006A94', '#1F84A8', '#4FA3C2', '#7EC1D9', '#004F70'];
-  document.getElementById('issue-chart').innerHTML =
+  const el = document.getElementById('issue-chart');
+  el.innerHTML =
     sorted.length ? sorted.map(([label, val], i) => `
-      <div class="hbar-row">
+      <div class="hbar-row hbar-clickable" data-issue="${escapeHtml(label)}" title="Click to see these ${val} ticket${val === 1 ? '' : 's'}">
         <div class="hbar-label" title="${escapeHtml(label)}">${escapeHtml(label)}</div>
         <div class="hbar-track">
           <div class="hbar-fill" style="width:${(val/maxVal*100).toFixed(0)}%;background:${colors[i % colors.length]}"></div>
@@ -2040,7 +2041,42 @@ function renderIssueChart(subset) {
         <div class="hbar-val">${val}</div>
       </div>`).join('')
     : '<p class="chart-empty">No data for this period</p>';
+
+  el.querySelectorAll('.hbar-clickable').forEach(row => {
+    row.addEventListener('click', () => drillIntoIssueType(row.dataset.issue));
+  });
 }
+
+// Jumps to the Tickets page filtered down to exactly the tickets behind one
+// Issue Type bar — including "Unspecified" (blank issueType, not a real
+// dropdown option) and any legacy value that predates the current dropdown
+// list (e.g. "Huawei user", left over from the old spreadsheet).
+function drillIntoIssueType(issueType) {
+  setPage('tickets');
+  const statusEl  = document.getElementById('filter-status');
+  const contactEl = document.getElementById('filter-contact');
+  const searchEl  = document.getElementById('search');
+  const issueEl   = document.getElementById('filter-issue');
+  if (statusEl)  statusEl.value = '';
+  if (contactEl) contactEl.value = '';
+  if (searchEl)  searchEl.value = '';
+  if (issueEl) {
+    if (issueType === 'Unspecified') {
+      issueEl.value = '__unspecified__';
+    } else {
+      const hasOption = Array.from(issueEl.options).some(o => o.value === issueType);
+      if (!hasOption) {
+        const opt = document.createElement('option');
+        opt.value = issueType;
+        opt.textContent = issueType;
+        issueEl.appendChild(opt);
+      }
+      issueEl.value = issueType;
+    }
+  }
+  filterTickets();
+}
+window.drillIntoIssueType = drillIntoIssueType;
 
 // ── Shared donut-builder (CSS conic-gradient, no external chart library) ────
 function buildDonutHTML(dataArr) {
