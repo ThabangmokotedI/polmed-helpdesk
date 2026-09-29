@@ -1728,6 +1728,36 @@ function agentDisplayName(email) {
 }
   window.getPolmedAgentName = () => agentDisplayName(currentUser?.email);
 
+// WhatsApp's Business Cloud API (what this app sends through) has no way
+// to delete or edit a message after it's sent — that's a platform limit,
+// not something this app is missing. These two checks catch the two most
+// common reasons someone would want to, before the message goes out:
+// sending the same thing twice by accident, and a word an agent wouldn't
+// want a member to see. Not exhaustive lists — a second pair of eyes, not
+// a guarantee.
+const FLAGGED_WORDS = ['fuck', 'shit', 'bitch', 'asshole', 'bastard', 'cunt', 'crap'];
+
+function findFlaggedWords(text) {
+  const lower = text.toLowerCase();
+  return FLAGGED_WORDS.filter(w => new RegExp(`\\b${w}\\b`, 'i').test(lower));
+}
+
+function findRecentDuplicateReply(ticket, message) {
+  const convo = Array.isArray(ticket.conversation) ? ticket.conversation : [];
+  const normalized = message.trim().toLowerCase();
+  const RECENT_MS = 5 * 60 * 1000;
+  for (let i = convo.length - 1; i >= 0; i--) {
+    const entry = convo[i];
+    if (entry.from !== 'agent' || entry.isReaction) continue;
+    const entryText = (entry.text || '').trim().toLowerCase();
+    if (!entryText) continue;
+    const entryAt = new Date(entry.at).getTime();
+    if (!entryAt || (Date.now() - entryAt) > RECENT_MS) return false; // agent's replies stop being "recent" — no need to keep scanning further back
+    if (entryText === normalized) return true;
+  }
+  return false;
+}
+
 window.sendWhatsAppReply = async function () {
   const t = tickets.find(x => x.id === editingId);
   if (!t || !t.phoneNumber) return;
@@ -1735,6 +1765,14 @@ window.sendWhatsAppReply = async function () {
   const typedMessage = (textarea?.value || '').trim();
   const message = typedMessage;
   if (!message) { alert('Reply text is empty.'); return; }
+
+  if (findRecentDuplicateReply(t, message)) {
+    if (!confirm('You sent this exact message in the last few minutes. Send it again?')) return;
+  }
+  const flagged = findFlaggedWords(message);
+  if (flagged.length) {
+    if (!confirm(`This message may contain language you didn't mean to send ("${flagged.join('", "')}"). Send it anyway?`)) return;
+  }
 
   const btn = document.getElementById('send-reply-btn');
   const originalLabel = btn.textContent;
