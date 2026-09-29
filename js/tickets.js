@@ -212,16 +212,12 @@ function listenToTickets() {
     olderTicketsCursor = snapshot.docs[snapshot.docs.length - 1] || olderTicketsCursor;
     hasMoreTickets = false;
     livePageInitialized = true;
+    // Sorted purely by latest activity (new message, reply, or status
+    // change) — a New/unread ticket used to be pinned above everything
+    // else regardless of age, which buried a ticket someone had just acted
+    // on under an older one that merely had an unread flag.
     tickets = [...liveTickets, ...olderTickets]
-      .sort((a, b) => {
-        // New / unread tickets are always pinned above everything else,
-        // so they never get buried by scrolling. Within each group,
-        // most recently active ticket (including replies) comes first.
-        const aPin = (a.hasNewReply || displayStatus(a) === 'New') ? 1 : 0;
-        const bPin = (b.hasNewReply || displayStatus(b) === 'New') ? 1 : 0;
-        if (aPin !== bPin) return bPin - aPin;
-        return ticketActivityTime(b) - ticketActivityTime(a);
-      });
+      .sort((a, b) => ticketActivityTime(b) - ticketActivityTime(a));
     if (reportTickets) {
       const liveIds = new Set(liveTickets.map(ticket => ticket.id));
       reportTickets = [
@@ -239,10 +235,9 @@ function listenToTickets() {
     if (detailOverlay && detailOverlay.classList.contains('open') && editingId) {
       renderConversation(editingId);
       renderTypingBanner(editingId);
-      const openTicket = tickets.find(x => x.id === editingId);
-      if (openTicket?.hasNewReply) {
-        updateDoc(doc(db, 'tickets', editingId), { hasNewReply: false }).catch(() => {});
-      }
+      // hasNewReply is intentionally left alone here too — see the comment
+      // at the end of viewTicket() for why having the ticket open (even
+      // watching a new message arrive live) doesn't clear it.
     }
   });
 }
@@ -441,7 +436,7 @@ function filterTickets() {
   const fs = document.getElementById('filter-status').value;
   const fc = document.getElementById('filter-contact').value;
   const fi = document.getElementById('filter-issue').value;
-  const sort = document.getElementById('sort-tickets')?.value || 'received-desc';
+  const sort = document.getElementById('sort-tickets')?.value || 'activity-desc';
   const showArchived = fs === 'Archived';
   const filtered = tickets.filter(t => {
     const mQ = !q ||
@@ -458,12 +453,15 @@ function filterTickets() {
     return mQ && mS && mC && mI;
   });
   filtered.sort((a, b) => {
-    const aUnread = a.hasNewReply ? 1 : 0;
-    const bUnread = b.hasNewReply ? 1 : 0;
-    if (aUnread !== bUnread) return bUnread - aUnread;
-    const aReceived = new Date(`${a.dateReceived || ''}T${a.timeReceived || '00:00:00'}`).getTime();
-    const bReceived = new Date(`${b.dateReceived || ''}T${b.timeReceived || '00:00:00'}`).getTime();
-    return sort === 'received-asc' ? aReceived - bReceived : bReceived - aReceived;
+    if (sort === 'received-asc' || sort === 'received-desc') {
+      const aReceived = new Date(`${a.dateReceived || ''}T${a.timeReceived || '00:00:00'}`).getTime();
+      const bReceived = new Date(`${b.dateReceived || ''}T${b.timeReceived || '00:00:00'}`).getTime();
+      return sort === 'received-asc' ? aReceived - bReceived : bReceived - aReceived;
+    }
+    // Default: latest activity, regardless of status or unread flag — a
+    // ticket someone just replied to shouldn't sit under an older, merely
+    // still-unread one.
+    return ticketActivityTime(b) - ticketActivityTime(a);
   });
   renderTable(filtered);
 }
@@ -1241,11 +1239,11 @@ function viewTicket(id) {
     startTypingWatch(id);
   }
 
-  const ticketUpdates = {};
-  if (t.hasNewReply) ticketUpdates.hasNewReply = false;
-  if (Object.keys(ticketUpdates).length > 0) {
-    updateDoc(doc(db, 'tickets', id), ticketUpdates).catch(() => {});
-  }
+  // hasNewReply is deliberately NOT cleared just from opening the ticket —
+  // it's cleared when the agent actually sends a reply (sendWhatsAppReply/
+  // sendWhatsAppInteraction). Clearing it on view meant an agent could open
+  // a ticket, get pulled away, and the ticket would quietly look "handled"
+  // even though nobody had replied yet.
 }
 
 window.dismissPossibleDuplicate = async function (ticketDocId) {
@@ -1823,7 +1821,9 @@ window.sendWhatsAppReply = async function () {
       throw new Error(backendMessage);
     }
     alert('Reply sent to the member on WhatsApp.');
-    updateDoc(doc(db, 'tickets', t.id), { updatedAt: serverTimestamp() }).catch(() => {});
+    // This is the actual "handled" moment — see the comment at the end of
+    // viewTicket() for why it's not cleared just from opening the ticket.
+    updateDoc(doc(db, 'tickets', t.id), { hasNewReply: false, updatedAt: serverTimestamp() }).catch(() => {});
     clearTimeout(typingStopTimer);
     clearTyping(t.id);
     currentReplyTarget = null;
