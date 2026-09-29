@@ -454,12 +454,17 @@ exports.handler = async function (event) {
             from: 'member', text, mediaPath, mediaType, waMessageId, at: now.toISOString(),
             ...(isReactionMsg ? { isReaction: true } : {})
           };
+          // "In Progress" should mean an agent is actually engaged, not just
+          // that time has passed and the member said something. A Stale
+          // ticket no agent ever replied in (still genuinely untriaged)
+          // goes back to New, not In Progress; one with a real agent reply
+          // in its history goes to In Progress, since the member is
+          // continuing an active back-and-forth.
+          const agentEverReplied = Array.isArray(ticketData.conversation) && ticketData.conversation.some(e => e.from === 'agent');
           tx.update(ticketDoc.ref, {
             conversation: admin.firestore.FieldValue.arrayUnion(newEntry),
             ...(selectedIssueType ? { issueType: selectedIssueType } : {}),
-            // A reply means the member is no longer quiet, so a Stale
-            // ticket stops being accurately "Stale" the moment this lands.
-            ...(ticketData.status === 'Stale' ? { status: 'In Progress' } : {}),
+            ...(ticketData.status === 'Stale' ? { status: agentEverReplied ? 'In Progress' : 'New' } : {}),
             lastMemberMessage: text,
             lastMemberMessageAt: admin.firestore.FieldValue.serverTimestamp(),
             // A reaction (emoji tap on a previous message) is an

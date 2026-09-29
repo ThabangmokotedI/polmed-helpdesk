@@ -1855,7 +1855,13 @@ window.sendWhatsAppReply = async function () {
     alert('Reply sent to the member on WhatsApp.');
     // This is the actual "handled" moment — see the comment at the end of
     // viewTicket() for why it's not cleared just from opening the ticket.
-    updateDoc(doc(db, 'tickets', t.id), { hasNewReply: false, updatedAt: serverTimestamp() }).catch(() => {});
+    // An agent actually replying is unambiguous proof the ticket is being
+    // worked, regardless of whether anyone remembered to change the Status
+    // dropdown — without this, a ticket can sit labeled "New" in the
+    // database through any number of real replies, until the stale-check
+    // job (which only scans New tickets) eventually mislabels it Stale.
+    const statusUpdate = (t.status === 'New' || t.status === 'Stale') ? { status: 'In Progress' } : {};
+    updateDoc(doc(db, 'tickets', t.id), { hasNewReply: false, ...statusUpdate, updatedAt: serverTimestamp() }).catch(() => {});
     clearTimeout(typingStopTimer);
     clearTyping(t.id);
     currentReplyTarget = null;
