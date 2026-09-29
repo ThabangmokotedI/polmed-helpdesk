@@ -307,6 +307,22 @@ exports.handler = async function (event) {
     return { statusCode: 405, body: 'Method not allowed' };
   }
 
+  // The header comment above has always claimed every POST is signature-
+  // checked before anything in it is trusted, but this call was never
+  // actually wired in — any unsigned POST was accepted as if it came from
+  // Meta. A bad/missing signature from a random request is the security
+  // check doing its job, not a system fault, so it's not treated as a
+  // health/alert-worthy error — only a genuine missing-secret config
+  // problem is.
+  const sigCheck = checkSignature(event);
+  if (!sigCheck.ok) {
+    console.error('Webhook signature check failed:', sigCheck.reason);
+    if (sigCheck.reason === 'config_error') {
+      await recordHealth('config_error', 'WHATSAPP_APP_SECRET not set — cannot verify webhook signatures');
+    }
+    return { statusCode: 401, body: 'Invalid signature' };
+  }
+
   let body;
   try {
     body = JSON.parse(event.body);
