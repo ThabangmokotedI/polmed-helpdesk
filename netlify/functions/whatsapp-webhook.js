@@ -311,21 +311,24 @@ exports.handler = async function (event) {
     return { statusCode: 405, body: 'Method not allowed' };
   }
 
-  // The header comment above has always claimed every POST is signature-
-  // checked before anything in it is trusted, but this call was never
-  // actually wired in — any unsigned POST was accepted as if it came from
-  // Meta. A bad/missing signature from a random request is the security
-  // check doing its job, not a system fault, so it's not treated as a
-  // health/alert-worthy error — only a genuine missing-secret config
-  // problem is.
-  const sigCheck = checkSignature(event);
-  if (!sigCheck.ok) {
-    console.error('Webhook signature check failed:', sigCheck.reason);
-    if (sigCheck.reason === 'config_error') {
-      await recordHealth('config_error', 'WHATSAPP_APP_SECRET not set — cannot verify webhook signatures');
-    }
-    return { statusCode: 401, body: 'Invalid signature' };
-  }
+  // DISABLED as of 2026-09-29: enforcing this rejected real messages from
+  // Meta and stopped ticket creation entirely — the same thing apparently
+  // happened once before, which is why this was never actually wired in
+  // despite the header comment above claiming it was. checkSignature()
+  // itself is left in place; the fix is to work out *why* real requests
+  // fail it (likely WHATSAPP_APP_SECRET not matching the Meta App's actual
+  // App Secret, or Netlify altering the raw body before this function sees
+  // it) before re-enabling, not to re-enable blind. See conversation notes
+  // for 2026-09-29.
+  //
+  // const sigCheck = checkSignature(event);
+  // if (!sigCheck.ok) {
+  //   console.error('Webhook signature check failed:', sigCheck.reason);
+  //   if (sigCheck.reason === 'config_error') {
+  //     await recordHealth('config_error', 'WHATSAPP_APP_SECRET not set — cannot verify webhook signatures');
+  //   }
+  //   return { statusCode: 401, body: 'Invalid signature' };
+  // }
 
   let body;
   try {
