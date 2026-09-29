@@ -11,3 +11,25 @@
 [functions."anonymize-old-tickets"]
   schedule = "30 4 * * *"
 
+# This app deploys straight to production on every push, several times a
+# day at points -- without this, a browser can keep serving a cached copy
+# of dashboard.html/js/css from before a fix shipped, making a deployed fix
+# look like it isn't working. no-cache (not no-store) still lets the
+# browser cache the file, it just has to check with the server before
+# using it, so this costs a small revalidation request, not the full file,
+# on repeat visits.
+[[headers]]
+  for = "/*.html"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/js/*"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/css/*"
+  [headers.values]
+    Cache-Control = "no-cache"
+
