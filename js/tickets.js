@@ -513,7 +513,13 @@ function genTicketId() {
     (d.getMonth() + 1).toString().padStart(2, '0') +
     d.getDate().toString().padStart(2, '0');
   const todayCount = tickets.filter(t => t.ticketId && t.ticketId.includes(`TKT-${ds}`)).length;
-  return `TKT-${ds}-${(todayCount + 1).toString().padStart(3, '0')}`;
+  // The sequence number alone isn't collision-safe: two agents logging a
+  // manual ticket around the same moment can both read the same count
+  // before either save lands, producing the same ticketId. The random
+  // suffix guarantees uniqueness regardless; the sequence number stays for
+  // readability (roughly which one of today's tickets this was).
+  const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return `TKT-${ds}-${(todayCount + 1).toString().padStart(3, '0')}-${suffix}`;
 }
 
 function openNewTicket() {
@@ -1770,7 +1776,7 @@ async function signOut() {
 
 // ── Badges / icons ────────────────────────────────────────────────────────────
 function statusBadge(s) {
-  const map = { 'New': 'new', 'Resolved': 'res', 'In Progress': 'prog', 'Unresolved': 'unres', 'Redirected': 'redir', 'Merged': 'merged' };
+  const map = { 'New': 'new', 'Resolved': 'res', 'In Progress': 'prog', 'Unresolved': 'unres', 'Redirected': 'redir', 'Merged': 'merged', 'Stale': 'stale' };
   return `<span class="badge ${map[s] || ''}">${escapeHtml(s) || '—'}</span>`;
 }
 function contactIcon(c) {

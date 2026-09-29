@@ -100,7 +100,9 @@ exports.handler = async function (event) {
   }, {});
   const ds     = `${received.year}${received.month}${received.day}`;
   const ts     = `${received.hour}${received.minute}${received.second}`;
-  const ticketId = `TKT-${ds}-EM-${ts}`;
+  // Random suffix so two emails landing in the same second don't get an
+  // identical ticket reference (same fix as whatsapp-webhook.js).
+  const ticketId = `TKT-${ds}-EM-${ts}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 
   // Truncate body to 2000 chars
   const messageBody = bodyText.trim().slice(0, 2000);

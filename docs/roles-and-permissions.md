@@ -1,6 +1,6 @@
 # POLMED Helpdesk Roles and Permissions
 
-This summary reflects the permissions enforced by the dashboard code and `docs/firestore.rules`.
+This summary reflects the permissions enforced by the dashboard code and `doc/firestore.rules`.
 
 ## Agent
 

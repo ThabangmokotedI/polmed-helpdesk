@@ -6,7 +6,7 @@
 // REMAINING SETUP STEPS in Firebase Console:
 //    - Authentication → Sign-in method → Enable "Email/Password"
 //    - Firestore Database → Create database → Start in production mode
-//    - Firestore → Rules → paste the rules from docs/firestore.rules
+//    - Firestore → Rules → paste the rules from doc/firestore.rules
 //    - Authentication → Users → Add user (email + password for each agent)
 //
 // NOTE: this apiKey is safe to commit — it only identifies this project to

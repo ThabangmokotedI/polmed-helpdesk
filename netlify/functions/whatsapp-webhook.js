@@ -32,7 +32,11 @@ const mailgunDomain  = process.env.MAILGUN_DOMAIN;
 const alertEmailTo   = process.env.ALERT_EMAIL_TO;
 const ALERT_COOLDOWN_MS = 30 * 60 * 1000;
 
-const OPEN_STATUSES = ['New', 'In Progress'];
+// Stale means "still an open conversation, but the member went quiet for
+// 5+ days" (set by mark-stale-tickets.js) -- it isn't a closed status, so a
+// reply should reattach to the same ticket exactly like New/In Progress
+// would, not spawn a disconnected new one.
+const OPEN_STATUSES = ['New', 'In Progress', 'Stale'];
 
 if (!admin.apps || !admin.apps.length) {
   const serviceAccountRaw = process.env.FIREBASE_SERVICE_ACCOUNT;
@@ -330,9 +334,19 @@ exports.handler = async function (event) {
     return { statusCode: 400, body: 'Invalid JSON' };
   }
 
-  const change  = body?.entry?.[0]?.changes?.[0];
-  const message = change?.value?.messages?.[0];
+  const change   = body?.entry?.[0]?.changes?.[0];
+  const messages = change?.value?.messages || [];
+  const message  = messages[0];
   if (!message) return { statusCode: 200, body: 'Not a message event' };
+  // Meta's Cloud API can in principle batch more than one inbound message
+  // into a single webhook call; only the first is processed below. This is
+  // rare enough in practice (and threading multiple messages through the
+  // ticket-creation/continuation logic below is involved enough) that a
+  // full fix is being deferred, but this makes it visible if it ever
+  // actually happens instead of silently dropping the rest.
+  if (messages.length > 1) {
+    console.error(`Webhook received ${messages.length} messages in one call — only the first is being processed, the rest are being dropped.`);
+  }
   await markMessageAsRead(message?.id);
 
   const sender = message?.from || 'unknown';
@@ -347,7 +361,13 @@ exports.handler = async function (event) {
 
   const ds = received.date.replaceAll('-', '');
   const ts = received.time.replaceAll(':', '');
-  const tempIdForMedia = `TMP-${ds}-${ts}`;
+  // A random suffix, not just date+time-to-the-second: two members
+  // messaging in the same second would otherwise get identical ticket
+  // references (confirmed happening in real traffic), and replies are
+  // looked up by this exact ID -- a collision can cross-wire an agent's
+  // reply onto the wrong member's conversation.
+  const idSuffix = Math.random().toString(36).slice(2, 6).toUpperCase();
+  const tempIdForMedia = `TMP-${ds}-${ts}-${idSuffix}`;
 
   if (MEDIA_TYPES.includes(message.type)) {
     const mediaObj = message[message.type];
@@ -385,11 +405,12 @@ exports.handler = async function (event) {
     // A still-open ticket (New/In Progress) is threaded onto exactly as
     // before. If the sender's most recent ticket was closed (Resolved/
     // Unresolved/Redirected) within the last 30 days, we tag the new
-    // ticket about to be created with a pointer to it, so the dashboard
-    // can ask the agent to confirm whether it's a continuation.
+    // ticket about to be created with a pointer to it (possibleDuplicateOf,
+    // read by the dashboard's duplicate-warning banner) so the agent can
+    // confirm whether it's a continuation.
     const CONTINUATION_STATUSES  = ['Resolved', 'Unresolved', 'Redirected'];
     const CONTINUATION_WINDOW_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-    let continuationSuggestion = null;
+    let possibleDuplicateOfId = null;
 
     let recentSnap;
     try {
@@ -429,6 +450,9 @@ exports.handler = async function (event) {
         await ticketDoc.ref.update({
           conversation: admin.firestore.FieldValue.arrayUnion(newEntry),
           ...(selectedIssueType ? { issueType: selectedIssueType } : {}),
+          // A reply means the member is no longer quiet, so a Stale ticket
+          // stops being accurately "Stale" the moment this lands.
+          ...(ticketData.status === 'Stale' ? { status: 'In Progress' } : {}),
           lastMemberMessage: text,
           lastMemberMessageAt: admin.firestore.FieldValue.serverTimestamp(),
           hasNewReply: true,
@@ -445,16 +469,12 @@ exports.handler = async function (event) {
       if (CONTINUATION_STATUSES.includes(ticketData.status)) {
         const closedAtMs = ticketData.updatedAt?.toMillis ? ticketData.updatedAt.toMillis() : 0;
         if (closedAtMs && (now.getTime() - closedAtMs) < CONTINUATION_WINDOW_MS) {
-          continuationSuggestion = {
-            ticketDocId: ticketDoc.id,
-            ticketId: ticketData.ticketId,
-            closedStatus: ticketData.status
-          };
+          possibleDuplicateOfId = ticketData.ticketId;
         }
       }
     }
 
-    const ticketId = `TKT-${ds}-WA-${ts}`;
+    const ticketId = `TKT-${ds}-WA-${ts}-${idSuffix}`;
 
     let finalMediaPath = mediaPath;
     if (mediaPath) {
@@ -470,10 +490,6 @@ exports.handler = async function (event) {
         // fall back to the temp path — not fatal
       }
     }
-
-        const resolvedWithSamePhone = !recentSnap.empty && recentSnap.docs[0].data().status === 'Resolved'
-          ? { data: recentSnap.docs[0].data() }
-          : null;
 
         const ticket = {
       ticketId,
@@ -496,8 +512,8 @@ exports.handler = async function (event) {
       updatedAt:     admin.firestore.FieldValue.serverTimestamp()
     };
 
-    if (resolvedWithSamePhone) {
-      ticket.possibleDuplicateOf = resolvedWithSamePhone.data.ticketId;
+    if (possibleDuplicateOfId) {
+      ticket.possibleDuplicateOf = possibleDuplicateOfId;
     }
 
     await db.collection('tickets').add(ticket);

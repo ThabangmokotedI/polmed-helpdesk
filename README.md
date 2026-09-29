@@ -71,7 +71,7 @@ site assets and to run functions from `netlify/functions`.
 ## How to use
 
 1. Ensure Firebase Authentication Email/Password is enabled.
-2. Create Firestore and apply the rules from `docs/firestore.rules`.
+2. Create Firestore and apply the rules from `doc/firestore.rules`.
 3. Add agent users in Firebase Authentication.
 4. Configure required Netlify environment variables.
 5. Deploy the repo to Netlify.

@@ -45,8 +45,13 @@ document.addEventListener('click', (e) => {
 });
 
 // Keyboard shortcuts
+// Escape goes through each overlay's own close function rather than
+// stripping the "open" class directly, so it behaves exactly like clicking
+// the backdrop: the ticket form still asks before discarding unsaved edits,
+// and the detail view still cleans up its typing-indicator listeners.
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open'));
-  }
+  if (e.key !== 'Escape') return;
+  if (document.getElementById('ticket-overlay')?.classList.contains('open')) window.closeModal?.();
+  if (document.getElementById('detail-overlay')?.classList.contains('open')) window.closeDetail?.();
+  if (document.getElementById('contact-member-overlay')?.classList.contains('open')) window.closeContactMember?.();
 });

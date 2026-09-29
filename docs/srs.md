@@ -151,7 +151,7 @@ The UI currently supports these issue types:
 
 ### NFR-01: Security
 - Only authenticated users may read or write tickets.
-- Only supervisors may delete tickets in `docs/firestore.rules`.
+- Only supervisors may delete tickets in `doc/firestore.rules`.
 - Agent role records are stored in `agents/{uid}` and default to `agent`.
 - Incoming webhook requests are verified by signature when configured.
 
@@ -242,7 +242,7 @@ The UI currently supports these issue types:
 ## 7. Deployment Notes
 
 - `js/firebase-config.js` is already configured for the current Firebase project.
-- `docs/firestore.rules` defines agent-only access and supervisor delete privileges.
+- `doc/firestore.rules` defines agent-only access and supervisor delete privileges.
 - `netlify.toml` publishes the repo root and routes functions from `netlify/functions`.
 - Required environment variables are documented in `README.md`.
 
@@ -275,7 +275,7 @@ The UI currently supports these issue types:
 2. Create project: "polmed-helpdesk"
 3. Enable **Authentication** → Sign-in method → **Email/Password**
 4. Create **Firestore Database** → Start in production mode
-5. Paste rules from `docs/firestore.rules` into Firestore → Rules
+5. Paste rules from `doc/firestore.rules` into Firestore → Rules
 6. Register a **Web App** → copy config values into `js/firebase-config.js`
 7. Add agent accounts: Authentication → Users → Add user (for each agent)
 
