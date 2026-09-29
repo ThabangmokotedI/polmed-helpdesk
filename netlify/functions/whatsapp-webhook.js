@@ -361,6 +361,7 @@ exports.handler = async function (event) {
   let mediaPath = null;
   let mediaType = null;
   let selectedIssueType = null;
+  let isReactionMsg = false; // a member tapping an emoji reaction, not a real message needing a reply
 
   const ds = received.date.replaceAll('-', '');
   const ts = received.time.replaceAll(':', '');
@@ -385,6 +386,7 @@ exports.handler = async function (event) {
   } else if (message.type === 'reaction') {
     const emoji = message.reaction?.emoji;
     text = emoji ? `Reacted ${emoji} to a previous message` : 'Removed their reaction to a previous message';
+    isReactionMsg = true;
   } else if (message.type === 'location') {
     const loc = message.location;
     text = loc?.name
@@ -448,7 +450,10 @@ exports.handler = async function (event) {
         }
 
         if (OPEN_STATUSES.includes(ticketData.status)) {
-          const newEntry = { from: 'member', text, mediaPath, mediaType, waMessageId, at: now.toISOString() };
+          const newEntry = {
+            from: 'member', text, mediaPath, mediaType, waMessageId, at: now.toISOString(),
+            ...(isReactionMsg ? { isReaction: true } : {})
+          };
           tx.update(ticketDoc.ref, {
             conversation: admin.firestore.FieldValue.arrayUnion(newEntry),
             ...(selectedIssueType ? { issueType: selectedIssueType } : {}),
@@ -457,7 +462,11 @@ exports.handler = async function (event) {
             ...(ticketData.status === 'Stale' ? { status: 'In Progress' } : {}),
             lastMemberMessage: text,
             lastMemberMessageAt: admin.firestore.FieldValue.serverTimestamp(),
-            hasNewReply: true,
+            // A reaction (emoji tap on a previous message) is an
+            // acknowledgement, not a new question -- it shouldn't force the
+            // unread flag on by itself. If the ticket was already unread
+            // from an earlier unanswered message, this leaves that as-is.
+            ...(isReactionMsg ? {} : { hasNewReply: true }),
             updatedBy: 'WhatsApp webhook',
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
           });
@@ -485,15 +494,19 @@ exports.handler = async function (event) {
         identifier:    '',
         description:   '',
         issueType:     selectedIssueType || '',
-        conversation:  [{ from: 'member', text, mediaPath, mediaType, waMessageId, at: now.toISOString() }],
+        conversation:  [{
+          from: 'member', text, mediaPath, mediaType, waMessageId, at: now.toISOString(),
+          ...(isReactionMsg ? { isReaction: true } : {})
+        }],
         dateReceived:  received.date,
         timeReceived:  received.time,
         // A brand-new ticket needs a reply just as much as a new message on
         // an existing one does -- this was never set here at all, so a
         // first-ever message had no unread indicator (the New-status pin
         // in the ticket list used to paper over that; removing the pin
-        // made the gap visible).
-        hasNewReply:   true,
+        // made the gap visible). Not forced on for the (unusual) case of
+        // someone's very first-ever contact being a reaction.
+        hasNewReply:   !isReactionMsg,
         createdBy:     'WhatsApp webhook',
         createdAt:     admin.firestore.FieldValue.serverTimestamp(),
         updatedBy:     'WhatsApp webhook',

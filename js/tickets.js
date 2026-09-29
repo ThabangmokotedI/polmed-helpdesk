@@ -1089,12 +1089,20 @@ function renderSensitiveField(value, label, ticketId) {
 }
 
 // ── Ticket detail view ────────────────────────────────────────────────────────
+// Set right before redirecting a Merged ticket's own row to the ticket it
+// was merged into (below) — the redirect itself was already correct (a
+// merged ticket's own conversation is empty, showing it directly would be
+// useless), what was missing was ever explaining why you landed somewhere
+// else. Read once by the render below, then cleared.
+let redirectedFromMergedTicketId = null;
+
 function viewTicket(id) {
   const t = tickets.find(x => x.id === id);
   if (!t) return;
   if (t.status === 'Merged' && t.mergedIntoTicketDocId) {
     const original = tickets.find(x => x.id === t.mergedIntoTicketDocId);
     if (original) {
+      redirectedFromMergedTicketId = t.ticketId;
       viewTicket(original.id);
       return;
     }
@@ -1127,6 +1135,11 @@ function viewTicket(id) {
     <div class="duplicate-banner merged-ticket-note">
       This ticket was merged into <strong>${escapeHtml(t.mergedIntoTicketId)}</strong>. Its conversation is retained there.
     </div>` : '';
+  const redirectNote = redirectedFromMergedTicketId ? `
+    <div class="duplicate-banner merged-ticket-note">
+      You opened <strong>${escapeHtml(redirectedFromMergedTicketId)}</strong>, which was merged into this ticket — its conversation is shown below, marked with a divider.
+    </div>` : '';
+  redirectedFromMergedTicketId = null;
 
   // ── Returning-member detection ────────────────────────────────────────────
   // Uses the phone number purely as an internal matching key — the number
@@ -1169,6 +1182,7 @@ function viewTicket(id) {
   }
     document.getElementById('detail-body').innerHTML = `
     ${anonymizedNote}
+    ${redirectNote}
     ${returningMemberNote}
       ${duplicateBanner}
     ${mergedNote}
@@ -1229,6 +1243,8 @@ function viewTicket(id) {
   `;
   document.getElementById('copy-reply-btn').style.display = t.ticketId ? 'inline-flex' : 'none';
   document.getElementById('send-reply-btn').style.display = canReplyByWhatsApp ? 'inline-flex' : 'none';
+  const markReadBtn = document.getElementById('mark-read-btn');
+  if (markReadBtn) markReadBtn.style.display = t.hasNewReply ? 'inline-flex' : 'none';
   document.getElementById('detail-overlay').classList.add('open');
   if (canReplyByWhatsApp) {
     renderConversation(id);
@@ -1245,6 +1261,22 @@ function viewTicket(id) {
   // a ticket, get pulled away, and the ticket would quietly look "handled"
   // even though nobody had replied yet.
 }
+
+// The explicit, deliberate alternative to "reply to clear the flag" — for
+// when the conversation is genuinely over and doesn't need a typed reply
+// (the member reacted, said "thanks", etc. after things were already
+// wrapped up). Unlike sendWhatsAppReply's automatic clear, this is a
+// conscious choice the agent makes, not something that happens silently.
+window.markTicketRead = async function () {
+  if (!editingId) return;
+  try {
+    await updateDoc(doc(db, 'tickets', editingId), { hasNewReply: false, updatedAt: serverTimestamp() });
+    const btn = document.getElementById('mark-read-btn');
+    if (btn) btn.style.display = 'none';
+  } catch (err) {
+    alert('Could not mark as read: ' + err.message);
+  }
+};
 
 window.dismissPossibleDuplicate = async function (ticketDocId) {
   try {
