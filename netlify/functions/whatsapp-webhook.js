@@ -19,7 +19,7 @@
 
 const admin  = require('firebase-admin');
 const crypto = require('crypto');
-const { matchAutoReply } = require('./lib/auto-reply-rules');
+const { matchAutoReply, getRuleById } = require('./lib/auto-reply-rules');
 
 const verifyToken   = process.env.WHATSAPP_VERIFY_TOKEN;
 const appSecret     = process.env.WHATSAPP_APP_SECRET;
@@ -286,6 +286,59 @@ async function sendWelcomeMessage(phoneNumber) {
   await sendPlainText(phoneNumber, text);
 }
 
+// Sent right after the welcome message, only when the member's message
+// didn't already match an auto-reply rule -- lets them tap through to a
+// tailored answer instead of typing and hoping it matches a keyword. Row
+// ids are deliberately the same ids used in lib/auto-reply-rules.js, so a
+// tap is looked up the exact same way a keyword match would be; 'other'
+// matches no rule on purpose and falls through to the normal agent flow.
+async function sendIssueMenu(phoneNumber) {
+  if (!accessToken || !phoneNumberId) return;
+  try {
+    await fetch(
+      `https://graph.facebook.com/${graphVersion}/${phoneNumberId}/messages`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: phoneNumber,
+          type: 'interactive',
+          interactive: {
+            type: 'list',
+            body: { text: 'What can we help you with today?' },
+            footer: { text: 'Tap to select an option' },
+            action: {
+              button: 'View options',
+              sections: [{
+                title: 'Common requests',
+                rows: [
+                  { id: 'forgot-password', title: 'Forgot password', description: 'Reset your password yourself' },
+                  { id: 'forgot-username', title: 'Forgot username', description: "Can't remember your username" },
+                  { id: 'register-help', title: 'Register on the app', description: 'Step-by-step sign up guide' },
+                  { id: 'benefits-lookup', title: 'View my benefits', description: 'Consultations, limits & more' },
+                  { id: 'documents-lookup', title: 'My Documents', description: 'Claims, certificates & more' },
+                  { id: 'digital-card', title: 'Digital membership card', description: 'How to view your card' },
+                  { id: 'update-contact', title: 'Update contact details', description: 'Change your details on file' },
+                  { id: 'gp-nomination', title: 'Nominate a GP', description: 'Change your nominated doctor' },
+                  { id: 'scam-fraud', title: 'Report a scam', description: 'Report suspicious contact' },
+                  { id: 'other', title: 'Something else', description: 'Speak to an agent' }
+                ]
+              }]
+            }
+          }
+        })
+      }
+    );
+  } catch (err) {
+    console.error('Could not send issue menu:', err.message);
+  }
+}
+
 // ── Media handling ────────────────────────────────────────────────────────────
 const MEDIA_TYPES = ['image', 'video', 'audio', 'document', 'sticker'];
 
@@ -424,11 +477,15 @@ exports.handler = async function (event) {
     text = `[Unsupported message type: ${message.type || 'unknown'}]`;
   }
 
-  // Only free-text messages that aren't a reaction and didn't already come
-  // in as a menu tap get checked against the auto-reply rules -- a reaction
-  // or an explicit issue-type pick already has a clear, separate handling
-  // path. See lib/auto-reply-rules.js for what each rule does.
-  const autoMatch = (!isReactionMsg && !selectedIssueType) ? matchAutoReply(text) : null;
+  // A menu tap (selectedIssueType) is checked against the rules by id
+  // first -- that's a direct, reliable match on what the member actually
+  // picked. The "Something else / speak to an agent" row's id ('other')
+  // deliberately matches no rule, so selectedRule is null there and it
+  // falls through to the normal agent-facing flow below. Free text only
+  // gets keyword-matched when it isn't a reaction and no menu pick was
+  // made. See lib/auto-reply-rules.js for what each rule does.
+  const selectedRule = selectedIssueType ? getRuleById(selectedIssueType) : null;
+  const autoMatch = selectedRule || ((!isReactionMsg && !selectedIssueType) ? matchAutoReply(text) : null);
 
   try {
     const db = admin.firestore();
@@ -605,6 +662,8 @@ exports.handler = async function (event) {
       if (!isWithinBusinessHours(now)) {
         await sendAfterHoursMessage(sender);
       }
+      await sendIssueMenu(sender);
+      await logSystemReply(db, outcome.docId, 'Sent an issue-selection menu.');
     }
     console.log('New ticket created:', ticketId, 'from sender:', sender.slice(-4), mediaType ? `(media: ${mediaType})` : '');
     await recordHealth('ok');

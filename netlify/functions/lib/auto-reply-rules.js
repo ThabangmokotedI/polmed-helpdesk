@@ -177,6 +177,19 @@ const AUTO_REPLY_RULES = [
       `Email: information@whistleblowing.co.za\n` +
       `Email: fraud@medscheme.co.za\n\n` +
       AUTO_DISCLAIMER
+  },
+  {
+    // Menu-only consolidation of claims-lookup/member-certificate/tax-
+    // certificate -- they're all under the same "My Documents" app menu,
+    // and a 10-row WhatsApp list has no room for three separate rows. Free
+    // text like "tax certificate" still gets its own specific rule above;
+    // this exists purely as the "My Documents" row's tap target.
+    id: 'documents-lookup',
+    keywords: ['my documents'],
+    status: null,
+    text: `Good day, Valued Member\n\n` +
+      `Your claims, member certificate, and tax certificate are all available under *My Documents* in the POLMED Connect app menu.\n\n` +
+      AUTO_DISCLAIMER
   }
 ];
 
@@ -186,4 +199,8 @@ function matchAutoReply(rawText) {
   return AUTO_REPLY_RULES.find(rule => rule.keywords.some(k => text.includes(k))) || null;
 }
 
-module.exports = { AUTO_REPLY_RULES, matchAutoReply };
+function getRuleById(id) {
+  return AUTO_REPLY_RULES.find(rule => rule.id === id) || null;
+}
+
+module.exports = { AUTO_REPLY_RULES, matchAutoReply, getRuleById };
