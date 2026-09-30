@@ -94,6 +94,14 @@
 
 .convo-member-wrap { align-items: flex-start; }
 .convo-agent-wrap  { align-items: flex-end; }
+.convo-system-wrap { align-items: center; }
+
+.convo-system {
+  align-self: center;
+  max-width: 90%;
+  background: #FBF6E9;
+  border: 1px dashed #E3C879;
+}
 
 .convo-actions {
   display: none;

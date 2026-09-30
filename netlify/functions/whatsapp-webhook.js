@@ -19,6 +19,7 @@
 
 const admin  = require('firebase-admin');
 const crypto = require('crypto');
+const { matchAutoReply } = require('./lib/auto-reply-rules');
 
 const verifyToken   = process.env.WHATSAPP_VERIFY_TOKEN;
 const appSecret     = process.env.WHATSAPP_APP_SECRET;
@@ -158,7 +159,10 @@ async function markMessageAsRead(messageId) {
   }
 }
 
-async function sendTicketConfirmation(phoneNumber, ticketId) {
+// Shared by every function below that just needs to push a plain-text
+// message out via the Graph API — one place to fix the request shape if it
+// ever needs to change.
+async function sendPlainText(phoneNumber, text) {
   if (!accessToken || !phoneNumberId) return;
   try {
     await fetch(
@@ -174,12 +178,34 @@ async function sendTicketConfirmation(phoneNumber, ticketId) {
           recipient_type: 'individual',
           to: phoneNumber,
           type: 'text',
-          text: { body: `Thank you for contacting the POLMED Connect Helpdesk. Your ticket reference is ${ticketId}. We will follow up with you shortly.` }
+          text: { body: text }
         })
       }
     );
   } catch (err) {
-    console.error('Could not send ticket confirmation:', err.message);
+    console.error('Could not send WhatsApp text:', err.message);
+  }
+}
+
+async function sendTicketConfirmation(phoneNumber, ticketId) {
+  await sendPlainText(phoneNumber, `Thank you for contacting the POLMED Connect Helpdesk. Your ticket reference is ${ticketId}. We will follow up with you shortly.`);
+}
+
+// Records an auto-reply-rule send onto the ticket's conversation thread,
+// same pattern as send-whatsapp-interaction.js uses for agent-sent replies,
+// but with from: 'system' so it's visibly distinct from something an agent
+// typed (and so it correctly doesn't count as agentEverReplied above).
+async function logSystemReply(db, docId, text) {
+  try {
+    await db.collection('tickets').doc(docId).update({
+      conversation: admin.firestore.FieldValue.arrayUnion({
+        from: 'system', text, mediaPath: null, mediaType: null, at: new Date().toISOString()
+      }),
+      updatedBy: 'WhatsApp webhook (auto-reply)',
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+  } catch (err) {
+    console.error('Could not log system auto-reply:', err.message);
   }
 }
 
@@ -234,7 +260,6 @@ function harareDateTimeParts(date) {
 }
 
 async function sendAfterHoursMessage(phoneNumber) {
-  if (!accessToken || !phoneNumberId) return;
   const text = "Thanks for messaging POLMED Connect Helpdesk! Our agents are available Monday–Friday, 08:00–17:00 (SA time), and we're currently offline.\n\n" +
     "To help us assist you faster once we're back, please reply with:\n" +
     "1. A description of what you're struggling with in the POLMED Connect app\n" +
@@ -242,62 +267,23 @@ async function sendAfterHoursMessage(phoneNumber) {
     "3. Your ID number\n" +
     "4. Your email address\n\n" +
     "We'll follow up as soon as we're back online.";
-  try {
-    await fetch(
-      `https://graph.facebook.com/${graphVersion}/${phoneNumberId}/messages`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          messaging_product: 'whatsapp',
-          recipient_type: 'individual',
-          to: phoneNumber,
-          type: 'text',
-          text: { body: text }
-        })
-      }
-    );
-  } catch (err) {
-    console.error('Could not send after-hours message:', err.message);
-  }
+  await sendPlainText(phoneNumber, text);
 }
 
 // Sent automatically on every brand-new ticket where the member hasn't
-// already picked an issue type from an interactive list (that case gets
-// sendTicketConfirmation with a ticket reference instead). Previously this
-// text only existed as a quick-reply template an agent had to manually
-// pick and send -- during business hours, a plain first message like "Hi"
-// got no automatic reply at all.
+// already picked an issue type from an interactive list, AND the message
+// didn't match a known auto-reply rule (see lib/auto-reply-rules.js -- a
+// matched message gets that tailored reply instead of this generic one).
+// Previously this text only existed as a quick-reply template an agent had
+// to manually pick and send -- during business hours, a plain first message
+// like "Hi" got no automatic reply at all. This exact wording is the
+// approved greeting and must not change.
 async function sendWelcomeMessage(phoneNumber) {
-  if (!accessToken || !phoneNumberId) return;
   const text = "Thank you for contacting the POLMED Connect Helpdesk.\n\n" +
     "Please note that this channel is strictly for queries and support related to the POLMED Connect Mobile App.\n" +
     "If your enquiry relates to medical aid benefits, claims, authorisations, or any other general matter, kindly WhatsApp 0600702547 or call 0860765633 for assistance.\n\n" +
     "If you have a query regarding the app, please describe the issue and one of our agents will get back to you as soon as possible.";
-  try {
-    await fetch(
-      `https://graph.facebook.com/${graphVersion}/${phoneNumberId}/messages`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          messaging_product: 'whatsapp',
-          recipient_type: 'individual',
-          to: phoneNumber,
-          type: 'text',
-          text: { body: text }
-        })
-      }
-    );
-  } catch (err) {
-    console.error('Could not send welcome message:', err.message);
-  }
+  await sendPlainText(phoneNumber, text);
 }
 
 // ── Media handling ────────────────────────────────────────────────────────────
@@ -438,6 +424,12 @@ exports.handler = async function (event) {
     text = `[Unsupported message type: ${message.type || 'unknown'}]`;
   }
 
+  // Only free-text messages that aren't a reaction and didn't already come
+  // in as a menu tap get checked against the auto-reply rules -- a reaction
+  // or an explicit issue-type pick already has a clear, separate handling
+  // path. See lib/auto-reply-rules.js for what each rule does.
+  const autoMatch = (!isReactionMsg && !selectedIssueType) ? matchAutoReply(text) : null;
+
   try {
     const db = admin.firestore();
 
@@ -496,21 +488,35 @@ exports.handler = async function (event) {
           // in its history goes to In Progress, since the member is
           // continuing an active back-and-forth.
           const agentEverReplied = Array.isArray(ticketData.conversation) && ticketData.conversation.some(e => e.from === 'agent');
+          // A message matching a rule that already auto-answered THIS ticket
+          // once is treated as a persistent/unresolved issue -- it falls
+          // through to the normal agent-facing path below instead of
+          // repeating the same automated reply.
+          const alreadyAutoHandled = autoMatch && Array.isArray(ticketData.autoHandledIssues) && ticketData.autoHandledIssues.includes(autoMatch.id);
+          const freshAutoMatch = alreadyAutoHandled ? null : autoMatch;
           tx.update(ticketDoc.ref, {
             conversation: admin.firestore.FieldValue.arrayUnion(newEntry),
             ...(selectedIssueType ? { issueType: selectedIssueType } : {}),
-            ...(ticketData.status === 'Stale' ? { status: agentEverReplied ? 'In Progress' : 'New' } : {}),
+            ...(freshAutoMatch ? {
+              issueType: ticketData.issueType || freshAutoMatch.id,
+              autoHandledIssues: admin.firestore.FieldValue.arrayUnion(freshAutoMatch.id),
+              ...(freshAutoMatch.status ? { status: freshAutoMatch.status } : {})
+            } : {}),
+            ...(!freshAutoMatch && ticketData.status === 'Stale' ? { status: agentEverReplied ? 'In Progress' : 'New' } : {}),
             lastMemberMessage: text,
             lastMemberMessageAt: admin.firestore.FieldValue.serverTimestamp(),
             // A reaction (emoji tap on a previous message) is an
             // acknowledgement, not a new question -- it shouldn't force the
-            // unread flag on by itself. If the ticket was already unread
-            // from an earlier unanswered message, this leaves that as-is.
-            ...(isReactionMsg ? {} : { hasNewReply: true }),
+            // unread flag on by itself. A freshly auto-handled message has
+            // already been answered by the bot, so it doesn't need to flag
+            // the ticket for an agent either -- only a repeat/unmatched
+            // message does. If the ticket was already unread from an
+            // earlier unanswered message, this leaves that as-is.
+            ...(isReactionMsg || freshAutoMatch ? {} : { hasNewReply: true }),
             updatedBy: 'WhatsApp webhook',
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
           });
-          return { type: 'appended', ticketId: ticketData.ticketId };
+          return { type: 'appended', ticketId: ticketData.ticketId, docId: ticketDoc.id, autoMatch: freshAutoMatch };
         }
       }
 
@@ -526,14 +532,14 @@ exports.handler = async function (event) {
         ticketId,
         contactMethod: 'WhatsApp',
         source:        'whatsapp-webhook',
-        status:        'New',
+        status:        autoMatch ? (autoMatch.status || 'New') : 'New',
         message:       text,
         mediaPath,
         mediaType,
         phoneNumber:   sender,
         identifier:    '',
         description:   '',
-        issueType:     selectedIssueType || '',
+        issueType:     selectedIssueType || (autoMatch ? autoMatch.id : ''),
         conversation:  [{
           from: 'member', text, mediaPath, mediaType, waMessageId, at: now.toISOString(),
           ...(isReactionMsg ? { isReaction: true } : {})
@@ -545,22 +551,30 @@ exports.handler = async function (event) {
         // first-ever message had no unread indicator (the New-status pin
         // in the ticket list used to paper over that; removing the pin
         // made the gap visible). Not forced on for the (unusual) case of
-        // someone's very first-ever contact being a reaction.
-        hasNewReply:   !isReactionMsg,
+        // someone's very first-ever contact being a reaction, or a message
+        // the auto-reply rules already answered on the spot.
+        hasNewReply:   autoMatch ? false : !isReactionMsg,
         createdBy:     'WhatsApp webhook',
         createdAt:     admin.firestore.FieldValue.serverTimestamp(),
         updatedBy:     'WhatsApp webhook',
         updatedAt:     admin.firestore.FieldValue.serverTimestamp()
       };
       if (possibleDuplicateOfId) newTicket.possibleDuplicateOf = possibleDuplicateOfId;
+      if (autoMatch) newTicket.autoHandledIssues = [autoMatch.id];
 
-      tx.set(db.collection('tickets').doc(), newTicket);
-      return { type: 'created', ticketId };
+      const newDocRef = db.collection('tickets').doc();
+      tx.set(newDocRef, newTicket);
+      return { type: 'created', ticketId, docId: newDocRef.id, autoMatch };
     });
 
     if (outcome.type === 'appended') {
       console.log('Appended to existing ticket:', outcome.ticketId, 'from sender:', sender.slice(-4));
-      if (selectedIssueType) await sendTicketConfirmation(sender, outcome.ticketId);
+      if (outcome.autoMatch) {
+        await sendPlainText(sender, outcome.autoMatch.text);
+        await logSystemReply(db, outcome.docId, outcome.autoMatch.text);
+      } else if (selectedIssueType) {
+        await sendTicketConfirmation(sender, outcome.ticketId);
+      }
       await recordHealth('ok');
       return { statusCode: 200, body: JSON.stringify({ ok: true, ticketId: outcome.ticketId, appended: true }) };
     }
@@ -569,15 +583,22 @@ exports.handler = async function (event) {
     // (tx.set()) -- everything below here is side effects outside
     // Firestore (outbound WhatsApp sends, logging), which is exactly why
     // they're not inside the transaction body.
-    // No automatic issue-type selection prompt is sent. Agents can triage on
+    // A message matching an auto-reply rule gets that tailored reply
+    // instead of the generic welcome message -- e.g. "how many
+    // consultations do I have" gets sent straight to the Call Centre
+    // instead of the generic "describe your issue" text. No automatic
+    // issue-type selection prompt is sent otherwise; agents can triage on
     // the dashboard. Every other brand-new ticket gets the welcome/scope
-    // message automatically now (it used to only go out if an agent
-    // manually picked it from the quick-reply dropdown, so a plain first
-    // message during business hours got no reply at all) -- the
-    // after-hours notice still goes out in addition when it's actually
-    // after hours, since it carries real information the welcome message
-    // doesn't (office hours, what to send us to speed things up).
-    if (selectedIssueType) {
+    // message automatically (it used to only go out if an agent manually
+    // picked it from the quick-reply dropdown, so a plain first message
+    // during business hours got no reply at all) -- the after-hours notice
+    // still goes out in addition when it's actually after hours, since it
+    // carries real information the welcome message doesn't (office hours,
+    // what to send us to speed things up).
+    if (outcome.autoMatch) {
+      await sendPlainText(sender, outcome.autoMatch.text);
+      await logSystemReply(db, outcome.docId, outcome.autoMatch.text);
+    } else if (selectedIssueType) {
       await sendTicketConfirmation(sender, ticketId);
     } else {
       await sendWelcomeMessage(sender);

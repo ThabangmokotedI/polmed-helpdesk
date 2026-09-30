@@ -1301,6 +1301,13 @@ function viewTicket(id) {
       </div>
     </div>` : '';
 
+  const autoHandledNote = Array.isArray(t.autoHandledIssues) && t.autoHandledIssues.length ? `
+    <div class="detail-section" style="margin-bottom:10px">
+      <div style="display:inline-flex;align-items:center;gap:6px;background:#FBF6E9;color:#8A6D1D;border:1px solid #E3C879;border-radius:8px;padding:6px 12px;font-size:12.5px;font-weight:500">
+        ${lucideIcon('bot')} Auto-answered: ${escapeHtml(t.autoHandledIssues.join(', '))} — no unread flag unless the member replies again.
+      </div>
+    </div>` : '';
+
   let returningMemberNote = '';
   if (t.phoneNumber) {
     const priorTickets = tickets
@@ -1331,6 +1338,7 @@ function viewTicket(id) {
   }
     document.getElementById('detail-body').innerHTML = `
     ${anonymizedNote}
+    ${autoHandledNote}
     ${redirectNote}
     ${returningMemberNote}
       ${duplicateBanner}
@@ -1806,6 +1814,17 @@ function renderConversation(id) {
 
     if (isAgent && entry.isReaction) {
       return `<div class="convo-reaction-line">${escapeHtml(when)} — ${escapeHtml(entry.text)}</div>`;
+    }
+
+    if (entry.from === 'system') {
+      return `
+        <div class="convo-bubble-wrap convo-system-wrap">
+          <div class="convo-bubble convo-system">
+            <div class="convo-meta">Automated reply · ${escapeHtml(when)}</div>
+            <div class="convo-text">${escapeHtml(entry.text)}</div>
+          </div>
+        </div>
+      `;
     }
 
     const mediaHtml = renderMediaHTML(entry.mediaPath, entry.mediaType, 'small');
