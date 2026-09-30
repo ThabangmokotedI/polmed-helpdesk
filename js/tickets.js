@@ -426,7 +426,38 @@ function renderUnreadCount() {
     startTitleFlash(unreadCount);
   } else {
     stopTitleFlash();
+    // Nothing left to filter to once there's no more unread.
+    if (unreadOnlyFilter) { unreadOnlyFilter = false; updateUnreadFilterChip(); }
   }
+}
+
+// Clicking the "N unread reply" badge: straight to the ticket if there's
+// only one, otherwise filters the table to just the unread ones instead of
+// making the agent hunt through everything else for them.
+let unreadOnlyFilter = false;
+
+window.jumpToUnread = function () {
+  const unread = tickets.filter(t => t.hasNewReply);
+  if (!unread.length) return;
+  if (unread.length === 1) {
+    viewTicket(unread[0].id);
+    return;
+  }
+  unreadOnlyFilter = true;
+  updateUnreadFilterChip();
+  filterTickets();
+  document.getElementById('ticket-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
+window.clearUnreadFilter = function () {
+  unreadOnlyFilter = false;
+  updateUnreadFilterChip();
+  filterTickets();
+};
+
+function updateUnreadFilterChip() {
+  const chip = document.getElementById('unread-filter-chip');
+  if (chip) chip.style.display = unreadOnlyFilter ? 'inline-flex' : 'none';
 }
 
 function startTitleFlash(count) {
@@ -494,7 +525,8 @@ function filterTickets() {
       : (t.archived !== true || t.hasNewReply) && (!fs || status === fs);
     const mC = !fc || t.contactMethod === fc;
     const mI = !fi || (fi === '__unspecified__' ? !t.issueType : t.issueType === fi);
-    return mQ && mS && mC && mI;
+    const mU = !unreadOnlyFilter || t.hasNewReply === true;
+    return mQ && mS && mC && mI && mU;
   });
   filtered.sort((a, b) => {
     if (sort === 'received-asc' || sort === 'received-desc') {

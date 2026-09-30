@@ -74,7 +74,7 @@
         </div>
       </div>
       <div class="topbar-right">
-        <div class="notify-box" id="unread-count-box" style="display:none;background:#fff4e5;color:#b45309">
+        <div class="notify-box" id="unread-count-box" onclick="jumpToUnread()" role="button" tabindex="0" title="Jump straight to it, or list all of them if there's more than one" style="display:none;background:#fff4e5;color:#b45309;cursor:pointer">
           <span class="notify-dot" style="background:#f59e0b"></span>
           <span id="unread-count">0</span> unread reply
         </div>
@@ -145,6 +145,9 @@
             <option value="received-desc">Date Received (newest)</option>
             <option value="received-asc">Date Received (oldest)</option>
           </select>
+          <div class="notify-box" id="unread-filter-chip" onclick="clearUnreadFilter()" role="button" tabindex="0" title="Clear this filter" style="display:none;background:#fff4e5;color:#b45309;cursor:pointer">
+            Showing unread only <span aria-hidden="true" style="font-weight:700">&times;</span>
+          </div>
         </div>
 
         <div class="table-wrap">
