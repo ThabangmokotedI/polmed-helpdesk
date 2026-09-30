@@ -95,12 +95,12 @@
       <!-- ===== TICKETS PAGE ===== -->
       <section id="page-tickets">
         <div class="stats-row" id="stats-row">
-          <div class="stat-card"><div class="stat-label">Total</div><div class="stat-num" id="stat-total">—</div></div>
-          <div class="stat-card"><div class="stat-label">In Progress</div><div class="stat-num prog" id="stat-prog">—</div></div>
-          <div class="stat-card"><div class="stat-label">Resolved</div><div class="stat-num res" id="stat-res">—</div></div>
-          <div class="stat-card"><div class="stat-label">Unresolved</div><div class="stat-num unres" id="stat-unres">—</div></div>
-          <div class="stat-card"><div class="stat-label">WhatsApp</div><div class="stat-num wa" id="stat-wa">—</div></div>
-          <div class="stat-card"><div class="stat-label">Email</div><div class="stat-num" id="stat-email">—</div></div>
+          <div class="stat-card stat-clickable" onclick="drillIntoStat('total')" title="Show all loaded tickets"><div class="stat-label">Total</div><div class="stat-num" id="stat-total">—</div></div>
+          <div class="stat-card stat-clickable" onclick="drillIntoStat('prog')" title="Filter to In Progress. This count is exact; the filtered list below only searches loaded tickets, so use &quot;Load older tickets&quot; if you don't see all of them."><div class="stat-label">In Progress</div><div class="stat-num prog" id="stat-prog">—</div></div>
+          <div class="stat-card stat-clickable" onclick="drillIntoStat('res')" title="Filter to Resolved. This count is exact; the filtered list below only searches loaded tickets, so use &quot;Load older tickets&quot; if you don't see all of them."><div class="stat-label">Resolved</div><div class="stat-num res" id="stat-res">—</div></div>
+          <div class="stat-card stat-clickable" onclick="drillIntoStat('unres')" title="Filter to Unresolved. This count is exact; the filtered list below only searches loaded tickets, so use &quot;Load older tickets&quot; if you don't see all of them."><div class="stat-label">Unresolved</div><div class="stat-num unres" id="stat-unres">—</div></div>
+          <div class="stat-card stat-clickable" onclick="drillIntoStat('wa')" title="Filter to WhatsApp. This count is exact; the filtered list below only searches loaded tickets, so use &quot;Load older tickets&quot; if you don't see all of them."><div class="stat-label">WhatsApp</div><div class="stat-num wa" id="stat-wa">—</div></div>
+          <div class="stat-card stat-clickable" onclick="drillIntoStat('email')" title="Filter to Email. This count is exact; the filtered list below only searches loaded tickets, so use &quot;Load older tickets&quot; if you don't see all of them."><div class="stat-label">Email</div><div class="stat-num" id="stat-email">—</div></div>
         </div>
 
         <div class="controls">

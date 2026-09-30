@@ -204,13 +204,24 @@ function ticketActivityTime(t) {
 }
 
 function listenToTickets() {
-  const q = query(collection(db, 'tickets'), orderBy('updatedAt', 'desc'));
+  // Live-synced to only the most recently active TICKET_PAGE_SIZE tickets --
+  // not the whole collection. This used to be unlimited, which meant every
+  // browser session downloaded the entire ticket history (760+ and
+  // growing, full conversation threads included) on every load and on
+  // every single change anywhere in the collection. Since the list is
+  // sorted by latest activity, this live window naturally always contains
+  // whatever actually needs an agent's attention right now; anything
+  // older is one click away via "Load older tickets" below, which doesn't
+  // need to be live.
+  const q = query(collection(db, 'tickets'), orderBy('updatedAt', 'desc'), limit(TICKET_PAGE_SIZE));
   onSnapshot(q, (snapshot) => {
     liveTickets = snapshot.docs
       .map(d => ({ id: d.id, ...d.data() }));
     olderTickets = olderTickets.filter(ticket => !liveTickets.some(live => live.id === ticket.id));
     olderTicketsCursor = snapshot.docs[snapshot.docs.length - 1] || olderTicketsCursor;
-    hasMoreTickets = false;
+    // A full page back means there's likely more beyond it; a short page
+    // means the live window has caught up with the entire collection.
+    hasMoreTickets = snapshot.docs.length === TICKET_PAGE_SIZE;
     livePageInitialized = true;
     // Sorted purely by latest activity (new message, reply, or status
     // change) — a New/unread ticket used to be pinned above everything
@@ -218,15 +229,19 @@ function listenToTickets() {
     // on under an older one that merely had an unread flag.
     tickets = [...liveTickets, ...olderTickets]
       .sort((a, b) => ticketActivityTime(b) - ticketActivityTime(a));
-    // liveTickets is the whole collection (the query above has no limit),
-    // so it's simply the current truth -- no merge needed. The old
-    // filter-and-merge here was written for a since-removed paginated
-    // version where liveTickets was only the newest page; kept as-is, it
-    // meant a ticket missing from a fresh snapshot (i.e. deleted) got
-    // treated as "just not on this page" and quietly kept forever, so
-    // deleting a ticket never actually removed it from the Reports page
-    // until "Refresh report" was clicked.
-    if (reportTickets) reportTickets = liveTickets;
+    // reportTickets covers the whole collection (its own separate,
+    // one-time getDocs() fetch in renderReports()) -- only overlay it with
+    // whatever's in the live window, which is what could have just
+    // changed; anything outside that window is left as last fetched
+    // (accurate until something outside the live window is edited or
+    // deleted, at which point "Refresh report" catches it up).
+    if (reportTickets) {
+      const liveIds = new Set(liveTickets.map(t => t.id));
+      reportTickets = [
+        ...reportTickets.filter(t => !liveIds.has(t.id)),
+        ...liveTickets
+      ];
+    }
     updateOlderTicketsButton();
     renderStats();
     filterTickets();
@@ -335,6 +350,33 @@ function renderStats() {
   refreshHeaderStats();
   renderUnreadCount();
 }
+
+// The stat cards' own counts (refreshHeaderStats, above) come from a
+// server-side aggregation query and are always exact. Clicking one filters
+// the ticket table below to match -- but that table only searches
+// currently-loaded tickets (see listenToTickets()), so it can show fewer
+// rows than the card's own number for a status/channel with more matches
+// further back than what's loaded. "Load older tickets" closes that gap.
+function drillIntoStat(kind) {
+  const searchEl  = document.getElementById('search');
+  const statusEl  = document.getElementById('filter-status');
+  const contactEl = document.getElementById('filter-contact');
+  const issueEl   = document.getElementById('filter-issue');
+  if (searchEl)  searchEl.value = '';
+  if (issueEl)   issueEl.value = '';
+  if (statusEl)  statusEl.value = '';
+  if (contactEl) contactEl.value = '';
+
+  const statusMap  = { prog: 'In Progress', res: 'Resolved', unres: 'Unresolved' };
+  const contactMap = { wa: 'WhatsApp', email: 'Email' };
+  if (statusEl && statusMap[kind]) statusEl.value = statusMap[kind];
+  if (contactEl && contactMap[kind]) contactEl.value = contactMap[kind];
+  // 'total' falls through with every filter already cleared above.
+
+  filterTickets();
+  document.getElementById('ticket-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+window.drillIntoStat = drillIntoStat;
 
 function timestampMs(value) {
   if (!value) return 0;
@@ -471,12 +513,19 @@ function filterTickets() {
 function renderTable(list) {
   const el = document.getElementById('ticket-list');
   if (!list.length) {
+    // Search/filter only cover currently-loaded tickets now (see
+    // listenToTickets()), so an empty result while more exist further
+    // back is genuinely ambiguous -- "not found" vs. "not loaded yet".
+    const moreHint = hasMoreTickets
+      ? `<p style="margin-top:4px;font-size:12.5px">Search only covers loaded tickets — <button type="button" onclick="loadOlderTickets()" style="font:inherit;color:var(--teal);background:none;border:none;padding:0;cursor:pointer;text-decoration:underline">load older tickets</button> if you're looking for something further back.</p>`
+      : '';
     el.innerHTML = `
       <div class="empty-state">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="40" height="40">
           <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 13h4"/>
         </svg>
         <p>No tickets found</p>
+        ${moreHint}
       </div>`;
     return;
   }
