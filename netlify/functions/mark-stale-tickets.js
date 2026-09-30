@@ -29,16 +29,16 @@ const STALE_DAYS = 10;
 const STALE_THRESHOLD_MS = STALE_DAYS * 24 * 60 * 60 * 1000;
 
 exports.handler = async function (event) {
-  // Scheduled functions still get a public, unauthenticated URL — Netlify
-  // marks its own cron-triggered invocations with X-NF-Event: schedule, so
-  // this at least keeps the endpoint from being triggered by anyone who
-  // finds the URL and sends a plain request (not a cryptographic guarantee
-  // against a deliberate spoofed header, but this job only affects ticket
-  // status labels, not member data, so that's a proportionate bar here).
-  const nfEvent = event?.headers?.['x-nf-event'] || event?.headers?.['X-NF-Event'];
-  if (nfEvent !== 'schedule') {
-    return { statusCode: 401, body: 'This function only runs on its own schedule.' };
-  }
+  // REVERTED 2026-09-30: an X-NF-Event: schedule header check was added
+  // here to keep this endpoint from being triggered by anyone who finds
+  // the URL, but checking the first real overnight run's logs afterward
+  // showed it exiting in ~3ms with none of this function's own logging --
+  // consistent with the header gate rejecting Netlify's own scheduled
+  // trigger, silently breaking the daily run. Logging whatever headers a
+  // real scheduled invocation actually carries (for next time) instead of
+  // gating on a guess; not worth a second day of silent breakage over a
+  // job that only relabels ticket status, no member data.
+  console.log('mark-stale-tickets invoked. Headers:', JSON.stringify(event?.headers || {}));
 
   if (!admin.apps.length) {
     console.error('Firebase not initialized — missing env vars');

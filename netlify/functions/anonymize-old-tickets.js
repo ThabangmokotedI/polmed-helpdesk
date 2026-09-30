@@ -85,13 +85,18 @@ async function deleteMediaFiles(paths) {
 }
 
 exports.handler = async function (event) {
-  // This job permanently deletes personal data and files — it must only
-  // ever run on its own schedule, never on an arbitrary request to its
-  // public function URL.
-  const nfEvent = event?.headers?.['x-nf-event'] || event?.headers?.['X-NF-Event'];
-  if (nfEvent !== 'schedule') {
-    return { statusCode: 401, body: 'This function only runs on its own schedule.' };
-  }
+  // REVERTED 2026-09-30: this job permanently deletes personal data and
+  // files, so it genuinely needs to be restricted to its own schedule --
+  // but the X-NF-Event: schedule header check added here used the same
+  // logic as mark-stale-tickets.js, and that one's first overnight run
+  // showed clear signs of the header gate rejecting Netlify's own
+  // scheduled trigger (see that file's comment). Reverting this one too
+  // rather than leave a compliance job silently broken on a guess -- safe
+  // to do right now specifically because nothing is old enough to be
+  // eligible yet (checked: oldest ticket ~9-10 months, cutoff is 12), so
+  // an unauthorized trigger today would find zero tickets and do nothing.
+  // This needs a real fix before that stops being true.
+  console.log('anonymize-old-tickets invoked. Headers:', JSON.stringify(event?.headers || {}));
 
   if (!admin.apps.length) {
     console.error('Firebase not initialized — missing env vars');
