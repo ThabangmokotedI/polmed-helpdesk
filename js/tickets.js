@@ -72,6 +72,7 @@ window.openNewTicket    = openNewTicket;
   window.openContactMember = openContactMember;
   window.closeContactMember = closeContactMember;
   window.sendContactMember = sendContactMember;
+  window.checkExistingTicketForContact = checkExistingTicketForContact;
 window.editTicketById   = editTicketById;
 window.closeModal       = closeModal;
 window.saveTicket       = saveTicket;
@@ -625,12 +626,77 @@ function openContactMember() {
   document.getElementById('contact-name').value = '';
   document.getElementById('contact-note').value = '';
   document.getElementById('contact-member-result').textContent = '';
+  hideExistingTicketBanner();
   document.getElementById('contact-member-overlay').classList.add('open');
 }
 
 function closeContactMember() {
   document.getElementById('contact-member-overlay').classList.remove('open');
 }
+
+// Normalizes exactly the way start-whatsapp-conversation.js does server-side,
+// so this check looks up the same number the send would actually use.
+function normalizeContactPhone(raw) {
+  let phoneNumber = String(raw || '').trim().replace(/[^0-9]/g, '');
+  if (/^0[0-9]{9}$/.test(phoneNumber)) phoneNumber = `27${phoneNumber.slice(1)}`;
+  return phoneNumber;
+}
+
+const CONTACT_OPEN_STATUSES = ['New', 'In Progress', 'Stale'];
+let contactPhoneCheckTimer = null;
+let contactPhoneCheckToken = 0;
+
+// Doesn't block or fork the flow -- "Contact a member" can genuinely mean
+// starting something new even when an older ticket exists, so this only
+// surfaces the option to continue an open one instead of forcing either
+// choice. Queries Firestore directly rather than the loaded `tickets`
+// array, since that's now paginated (see listenToTickets()) and an open
+// ticket for this number might not be in the loaded window.
+function checkExistingTicketForContact() {
+  clearTimeout(contactPhoneCheckTimer);
+  const phoneNumber = normalizeContactPhone(document.getElementById('contact-phone')?.value);
+  if (!/^\d{8,15}$/.test(phoneNumber)) { hideExistingTicketBanner(); return; }
+  const myToken = ++contactPhoneCheckToken;
+  contactPhoneCheckTimer = setTimeout(async () => {
+    try {
+      const snap = await getDocs(query(
+        collection(db, 'tickets'),
+        where('phoneNumber', '==', phoneNumber),
+        orderBy('createdAt', 'desc'),
+        limit(1)
+      ));
+      if (myToken !== contactPhoneCheckToken) return; // a newer keystroke has since started its own check
+      if (snap.empty) { hideExistingTicketBanner(); return; }
+      const docSnap = snap.docs[0];
+      const t = docSnap.data();
+      if (CONTACT_OPEN_STATUSES.includes(t.status)) {
+        showExistingTicketBanner(docSnap.id, t.ticketId, t.status);
+      } else {
+        hideExistingTicketBanner();
+      }
+    } catch (err) {
+      console.error('Could not check for an existing ticket:', err.message);
+      hideExistingTicketBanner();
+    }
+  }, 500);
+}
+
+function showExistingTicketBanner(docId, ticketId, status) {
+  const banner = document.getElementById('contact-existing-ticket-banner');
+  if (!banner) return;
+  banner.innerHTML = `This member already has an open ticket — <strong>${escapeHtml(ticketId)}</strong> (${escapeHtml(status)}). <button type="button" class="btn btn-sm" onclick="viewExistingContactTicket('${docId}')">View &amp; reply there</button>`;
+  banner.style.display = 'block';
+}
+
+function hideExistingTicketBanner() {
+  const banner = document.getElementById('contact-existing-ticket-banner');
+  if (banner) banner.style.display = 'none';
+}
+
+window.viewExistingContactTicket = function (docId) {
+  closeContactMember();
+  viewTicket(docId);
+};
 
 async function sendContactMember() {
   const phoneNumber = document.getElementById('contact-phone').value.trim();

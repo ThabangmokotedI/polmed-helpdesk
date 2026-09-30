@@ -635,8 +635,9 @@ style="margin-bottom:16px;display:none">
       <div class="modal-body">
         <div class="form-group">
           <label for="contact-phone">WhatsApp phone number <span class="req">*</span></label>
-          <input type="tel" id="contact-phone" placeholder="e.g. 27821234567 or 0821234567" autocomplete="tel">
+          <input type="tel" id="contact-phone" placeholder="e.g. 27821234567 or 0821234567" autocomplete="tel" oninput="checkExistingTicketForContact()">
         </div>
+        <div id="contact-existing-ticket-banner" class="form-hint" style="display:none;background:#fff8e6;border:1px solid #f0d58c;border-radius:6px;padding:8px 10px;margin-top:-8px"></div>
         <div class="form-group">
           <label for="contact-name">Member name <span class="hint">(optional)</span></label>
           <input type="text" id="contact-name" placeholder="e.g. Thabo Mokotedi" autocomplete="name">
