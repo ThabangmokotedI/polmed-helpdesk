@@ -218,13 +218,15 @@ function listenToTickets() {
     // on under an older one that merely had an unread flag.
     tickets = [...liveTickets, ...olderTickets]
       .sort((a, b) => ticketActivityTime(b) - ticketActivityTime(a));
-    if (reportTickets) {
-      const liveIds = new Set(liveTickets.map(ticket => ticket.id));
-      reportTickets = [
-        ...reportTickets.filter(ticket => !liveIds.has(ticket.id)),
-        ...liveTickets
-      ];
-    }
+    // liveTickets is the whole collection (the query above has no limit),
+    // so it's simply the current truth -- no merge needed. The old
+    // filter-and-merge here was written for a since-removed paginated
+    // version where liveTickets was only the newest page; kept as-is, it
+    // meant a ticket missing from a fresh snapshot (i.e. deleted) got
+    // treated as "just not on this page" and quietly kept forever, so
+    // deleting a ticket never actually removed it from the Reports page
+    // until "Refresh report" was clicked.
+    if (reportTickets) reportTickets = liveTickets;
     updateOlderTicketsButton();
     renderStats();
     filterTickets();
