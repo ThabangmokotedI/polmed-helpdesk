@@ -20,16 +20,40 @@ const AUTO_DISCLAIMER = '_This is an automated reply. If this doesn\'t answer yo
 const AUTO_REPLY_RULES = [
   {
     id: 'out-of-scope',
+    // "consultation(s)"/"benefit(s)"/"claim(s)" were removed from here --
+    // those are actually viewable in-app (see benefits-lookup and
+    // claims-lookup below), so redirecting them to the Call Centre was
+    // wrong. What's left genuinely isn't shown anywhere in the app.
     keywords: [
-      'consultation', 'consultations', 'claim', 'claims', 'benefit', 'benefits',
       'authorisation', 'authorisations', 'authorization', 'authorizations',
-      'premium', 'contribution', 'membership fee', 'how many visits',
-      'medical aid balance', 'available balance'
+      'premium', 'contribution', 'membership fee'
     ],
     status: 'Redirected', // matches the existing "Redirected" reporting rule
     text: `Good day, Valued Member\n\n` +
       `For better assistance with your query, please contact the POLMED Client Service Call Centre on 0860765633 or send a WhatsApp text to 0600702547.\n\n` +
       `This channel is strictly for queries related to the *POLMED Connect Mobile App*.\n\n` +
+      AUTO_DISCLAIMER
+  },
+  {
+    id: 'benefits-lookup',
+    keywords: [
+      'consultation', 'consultations', 'benefit', 'benefits', 'how many visits',
+      'medical aid balance', 'available balance'
+    ],
+    status: null,
+    text: `Good day, Valued Member\n\n` +
+      `You can view your benefits (including things like remaining consultations and limits) in the POLMED Connect app:\n\n` +
+      `1. Log into the app\n` +
+      `2. Open the menu on the top left corner\n` +
+      `3. Select *Benefits Lookup*\n\n` +
+      `_These are steps to follow in the app itself -- no need to reply with a number. Reply here if you can't find what you're looking for there._`
+  },
+  {
+    id: 'claims-lookup',
+    keywords: ['claim', 'claims'],
+    status: null,
+    text: `Good day, Valued Member\n\n` +
+      `You can view your claims, including past claims, in the POLMED Connect app under *My Documents* in the menu.\n\n` +
       AUTO_DISCLAIMER
   },
   {
