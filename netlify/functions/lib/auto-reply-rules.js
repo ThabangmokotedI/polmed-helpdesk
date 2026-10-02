@@ -42,7 +42,7 @@ const AUTO_REPLY_RULES = [
     ],
     status: null,
     text: `Good day, Valued Member\n\n` +
-      `You can view your benefits (including things like remaining consultations and limits) in the POLMED Connect app:\n\n` +
+      `You can view the full list of your benefits in the POLMED Connect app:\n\n` +
       `1. Log into the app\n` +
       `2. Open the menu on the top left corner\n` +
       `3. Select *Benefits Lookup*\n\n` +

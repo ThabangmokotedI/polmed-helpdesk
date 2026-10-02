@@ -320,7 +320,7 @@ async function sendIssueMenu(phoneNumber) {
                   { id: 'forgot-password', title: 'Forgot password', description: 'Reset your password yourself' },
                   { id: 'forgot-username', title: 'Forgot username', description: "Can't remember your username" },
                   { id: 'register-help', title: 'Register on the app', description: 'Step-by-step sign up guide' },
-                  { id: 'benefits-lookup', title: 'View my benefits', description: 'Consultations, limits & more' },
+                  { id: 'benefits-lookup', title: 'View my benefits', description: 'See your full benefit list' },
                   { id: 'documents-lookup', title: 'My Documents', description: 'Claims, certificates & more' },
                   { id: 'digital-card', title: 'Digital membership card', description: 'How to view your card' },
                   { id: 'update-contact', title: 'Update contact details', description: 'Change your details on file' },
